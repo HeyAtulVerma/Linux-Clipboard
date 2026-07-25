@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://lincb.ople.in"><img src="https://img.shields.io/badge/Website-lincb.ople.in-0078D4?style=for-the-badge&logo=firefox" alt="Website" /></a>
-  <a href="https://github.com/AtulVermaGithub/Linux-Clipboard/releases"><img src="https://img.shields.io/badge/Release-v0.0.1-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
+  <a href="https://github.com/heyatulverma/Linux-Clipboard/releases"><img src="https://img.shields.io/badge/Release-v0.0.1-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" /></a>
   <img src="https://img.shields.io/badge/Built_With-Rust_%26_Slint-orange?style=for-the-badge&logo=rust" alt="Rust & Slint" />
 </p>
@@ -85,7 +85,7 @@ sudo apt update && sudo apt install -y build-essential pkg-config libfontconfig1
 
 ### Build & Install:
 ```bash
-git clone https://github.com/AtulVermaGithub/Linux-Clipboard.git
+git clone https://github.com/heyatulverma/Linux-Clipboard.git
 cd Linux-Clipboard/work
 cargo build --release
 sudo make install
