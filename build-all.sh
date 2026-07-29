@@ -125,8 +125,14 @@ if [ "$1" = "configure" ]; then
     modprobe uinput 2>/dev/null || true
     udevadm control --reload-rules 2>/dev/null || true
     udevadm trigger 2>/dev/null || true
-    if [ -n "$SUDO_USER" ]; then
-        usermod -aG input "$SUDO_USER" 2>/dev/null || true
+    ACTIVE_USER="${SUDO_USER:-$(who | grep -E '(:0|wayland)' | head -n 1 | awk '{print $1}')}"
+    [ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -v 'root' | head -n 1)"
+    [ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(ls /home 2>/dev/null | head -n 1)"
+
+    if [ -n "$ACTIVE_USER" ] && [ "$ACTIVE_USER" != "root" ]; then
+        usermod -aG input "$ACTIVE_USER" 2>/dev/null || true
+        USER_ID=$(id -u "$ACTIVE_USER" 2>/dev/null || echo 1000)
+        su - "$ACTIVE_USER" -c "DISPLAY=${DISPLAY:-:0} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/$USER_ID nohup /usr/bin/lincb.ople.in >/dev/null 2>&1 &" 2>/dev/null || true
     fi
     # Auto-install missing OCR/screen dependencies if installed via dpkg directly
     if ! command -v slurp >/dev/null 2>&1 || ! command -v grim >/dev/null 2>&1 || ! command -v tesseract >/dev/null 2>&1; then
@@ -229,8 +235,15 @@ post_install() {
     udevadm control --reload-rules 2>/dev/null || true
     udevadm trigger 2>/dev/null || true
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-    echo "NOTE: Add yourself to the 'input' group and re-login:"
-    echo "  sudo usermod -aG input \$USER"
+    ACTIVE_USER="${SUDO_USER:-$(who | grep -E '(:0|wayland)' | head -n 1 | awk '{print $1}')}"
+    [ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -v 'root' | head -n 1)"
+    [ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(ls /home 2>/dev/null | head -n 1)"
+
+    if [ -n "$ACTIVE_USER" ] && [ "$ACTIVE_USER" != "root" ]; then
+        usermod -aG input "$ACTIVE_USER" 2>/dev/null || true
+        USER_ID=$(id -u "$ACTIVE_USER" 2>/dev/null || echo 1000)
+        su - "$ACTIVE_USER" -c "DISPLAY=${DISPLAY:-:0} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/$USER_ID nohup /usr/bin/lincb.ople.in >/dev/null 2>&1 &" 2>/dev/null || true
+    fi
 }
 post_upgrade() { post_install; }
 pre_remove() { pkill -f 'lincb.ople.in' 2>/dev/null || true; }
@@ -349,6 +362,15 @@ modprobe uinput 2>/dev/null || true
 udevadm control --reload-rules 2>/dev/null || true
 udevadm trigger 2>/dev/null || true
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+ACTIVE_USER="${SUDO_USER:-$(who | grep -E '(:0|wayland)' | head -n 1 | awk '{print $1}')}"
+[ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -v 'root' | head -n 1)"
+[ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(ls /home 2>/dev/null | head -n 1)"
+
+if [ -n "$ACTIVE_USER" ] && [ "$ACTIVE_USER" != "root" ]; then
+    usermod -aG input "$ACTIVE_USER" 2>/dev/null || true
+    USER_ID=$(id -u "$ACTIVE_USER" 2>/dev/null || echo 1000)
+    su - "$ACTIVE_USER" -c "DISPLAY=${DISPLAY:-:0} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/$USER_ID nohup /usr/bin/lincb.ople.in >/dev/null 2>&1 &" 2>/dev/null || true
+fi
 
 %preun
 pkill -f "lincb.ople.in" 2>/dev/null || true
@@ -429,9 +451,18 @@ echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' \
 sudo modprobe uinput 2>/dev/null || true
 sudo udevadm control --reload-rules 2>/dev/null || true
 sudo udevadm trigger 2>/dev/null || true
-sudo usermod -aG input "$USER" 2>/dev/null || true
-gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-echo "✓ Installed! Re-login for group permissions to take effect."
+ACTIVE_USER="${SUDO_USER:-$(who | grep -E '(:0|wayland)' | head -n 1 | awk '{print $1}')}"
+[ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -v 'root' | head -n 1)"
+[ -z "$ACTIVE_USER" ] && ACTIVE_USER="$(ls /home 2>/dev/null | head -n 1)"
+
+if [ -n "$ACTIVE_USER" ] && [ "$ACTIVE_USER" != "root" ]; then
+    usermod -aG input "$ACTIVE_USER" 2>/dev/null || true
+    USER_ID=$(id -u "$ACTIVE_USER" 2>/dev/null || echo 1000)
+    su - "$ACTIVE_USER" -c "DISPLAY=${DISPLAY:-:0} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/$USER_ID nohup $BINDIR/$APP >/dev/null 2>&1 &" 2>/dev/null || true
+else
+    nohup $BINDIR/$APP >/dev/null 2>&1 &
+fi
+echo "✓ Installed & launched $APP in background! Press Super+V to open history."
 INNEREOF
     chmod +x "$STAGE/install.sh"
 

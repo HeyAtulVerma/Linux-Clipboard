@@ -76,10 +76,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check if first-run setup is complete
     let setup_path = config_dir.join("setup_done");
-    let is_first_run = !setup_path.exists();
+    let _is_first_run = !setup_path.exists();
 
-    // Always register/update desktop environment shortcuts on startup
-    if let Err(e) = backend::shortcuts::register_shortcuts() {
+    // Register/update desktop environment shortcuts for enabled features only
+    if let Err(e) = backend::shortcuts::register_shortcuts_filtered(&settings) {
         eprintln!("[Main] Shortcuts registration warning: {}", e);
     }
 
@@ -94,19 +94,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     app.set_is_dark(initial_is_dark);
     app.set_theme_mode(settings.theme_mode.clone().into());
+    app.set_enable_clipboard(settings.enable_clipboard_feature);
+    app.set_enable_emoji(settings.enable_emoji_feature);
     app.set_enable_ocr(settings.enable_ocr_feature);
+    
 
-    let force_setup = args.contains(&"--setup".to_string());
-    app.set_show_setup(is_first_run || force_setup);
-    
-    // Check if CLI flags are present on startup
-    if args.contains(&"--emoji".to_string()) {
-        app.set_active_tab(1);
-        app.set_search_placeholder("Search emojis...".into());
-    } else if args.contains(&"--ocr".to_string()) {
-        crate::backend::ocr::run_ocr_capture_and_ingest(conn.clone(), app_weak.clone());
-    }
-    
     // Populate initial emojis
     refresh_emojis(app_weak.clone(), 0, String::new());
 
@@ -120,8 +112,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _focus_timer = ui::window::setup_focus_loss_listener(&app);
     ui::window::position_window(&app);
 
-    // Spawn IPC socket listener in background
-    spawn_ipc_listener(&sock_path, app_weak.clone(), conn.clone());
+    // Spawn IPC socket listener in background with config_manager
+    spawn_ipc_listener(&sock_path, app_weak.clone(), conn.clone(), config_manager.clone());
 
     // Start background clipboard watcher
     let app_weak_watcher = app_weak.clone();
@@ -173,6 +165,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         refresh_clips(app_weak_c, conn_c, String::new());
                     }).ok();
                 }
+            }
+
+            // Completely pause/skip clipboard polling when Clipboard History tool is disabled
+            if !settings.enable_clipboard_feature {
+                std::thread::sleep(Duration::from_millis(500));
+                continue;
             }
 
             let last_text_hash_val = backend::clipboard::LAST_TEXT_HASH.load(std::sync::atomic::Ordering::SeqCst);
@@ -271,9 +269,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start System Tray Icon
     let _tray = ui::tray::setup_tray().ok();
 
-    // Show window if not started in background
-    if !args.contains(&"--background".to_string()) {
-        let _ = app.window().show();
+    // Show initial window based on CLI flags
+    if args.contains(&"--toggle".to_string()) {
+        if settings.enable_clipboard_feature {
+            app.set_active_tab(0);
+            app.set_search_placeholder("Search history...".into());
+            let _ = app.window().show();
+        }
+    } else if args.contains(&"--emoji".to_string()) {
+        if settings.enable_emoji_feature {
+            app.set_active_tab(1);
+            app.set_search_placeholder("Search emojis...".into());
+            let _ = app.window().show();
+        }
+    } else if args.contains(&"--ocr".to_string()) {
+        if settings.enable_ocr_feature {
+            crate::backend::ocr::run_ocr_capture_and_ingest(conn.clone(), app_weak.clone());
+        }
+    } else if !args.contains(&"--background".to_string()) {
+        // Direct launch without flags (e.g. app launcher or terminal lincb.ople.in): Launch MainWindow!
+        app.invoke_open_preferences();
     }
 
     slint::run_event_loop_until_quit()?;
@@ -468,61 +483,7 @@ fn setup_callbacks(
         }
     });
 
-    // 9. Finish Setup
-    let app_weak_c = app_weak.clone();
-    app.on_finish_setup(move || {
-        let setup_path = get_config_dir().join("setup_done");
-        std::fs::write(&setup_path, "done").ok();
-        let _ = backend::shortcuts::register_shortcuts();
-        if let Some(app) = app_weak_c.upgrade() {
-            app.set_show_setup(false);
-        }
-    });
 
-    // 10. Check Shortcuts
-    let app_weak_check = app_weak.clone();
-    app.on_check_shortcuts(move || {
-        if let Some(app) = app_weak_check.upgrade() {
-            app.set_setup_step(1);
-            app.set_shortcut_status("checking".into());
-            
-            match backend::shortcuts::check_shortcut_conflict() {
-                Ok(Some(details)) => {
-                    app.set_shortcut_status("conflict".into());
-                    app.set_shortcut_details(details.into());
-                }
-                Ok(None) => {
-                    match backend::shortcuts::register_shortcuts() {
-                        Ok(_) => {
-                            app.set_shortcut_status("ok".into());
-                        }
-                        Err(_) => {
-                            app.set_shortcut_status("failed".into());
-                        }
-                    }
-                }
-                Err(_) => {
-                    app.set_shortcut_status("failed".into());
-                }
-            }
-        }
-    });
-
-    // 11. Fix Shortcuts
-    let app_weak_fix = app_weak.clone();
-    app.on_fix_shortcuts(move || {
-        if let Some(app) = app_weak_fix.upgrade() {
-            app.set_shortcut_status("checking".into());
-            match backend::shortcuts::fix_shortcut_conflict() {
-                Ok(_) => {
-                    app.set_shortcut_status("ok".into());
-                }
-                Err(_) => {
-                    app.set_shortcut_status("failed".into());
-                }
-            }
-        }
-    });
 
     // 11b. Fix Single Shortcut instantly (toggle, emoji, ocr)
     app.on_fix_single_shortcut(move |sc_type| {
@@ -571,12 +532,194 @@ fn setup_callbacks(
         }
     });
 
-    // 14. Open Setup Wizard
-    let app_weak_open_setup = app_weak.clone();
-    app.on_open_setup(move || {
-        if let Some(app) = app_weak_open_setup.upgrade() {
-            app.set_setup_step(0);
-            app.set_show_setup(true);
-        }
+
+
+    // 15. Open Standalone Preferences Window (MainWindow in Slint)
+    let main_win_store: Arc<Mutex<Option<MainWindow>>> = Arc::new(Mutex::new(None));
+    let main_win_store_c = main_win_store.clone();
+    let conn_pref = conn.clone();
+    let config_manager_pref = config_manager.clone();
+    let app_weak_pref = app_weak.clone();
+
+    app.on_open_preferences(move || {
+        show_main_window(
+            main_win_store_c.clone(),
+            app_weak_pref.clone(),
+            conn_pref.clone(),
+            config_manager_pref.clone(),
+        );
     });
+}
+
+/// Creates and shows the standalone Preferences window (MainWindow component)
+fn show_main_window(
+    main_win_store: Arc<Mutex<Option<MainWindow>>>,
+    app_weak: slint::Weak<AppWindow>,
+    conn: Arc<Mutex<Connection>>,
+    config_manager: Arc<config::UserSettingsManager>,
+) {
+    let mut store = main_win_store.lock();
+    if let Some(ref existing_win) = *store {
+        if existing_win.window().is_visible() {
+            let _ = existing_win.window().show();
+            return;
+        }
+    }
+
+    if let Ok(main_win) = MainWindow::new() {
+        let settings = config_manager.load();
+        let history_count = {
+            let db = conn.lock();
+            backend::db::get_history(&db).map(|h| h.len() as i32).unwrap_or(0)
+        };
+
+        let mode_str = settings.theme_mode.clone();
+        let is_dark = match mode_str.as_str() {
+            "dark" => true,
+            "light" => false,
+            _ => is_system_dark_mode(),
+        };
+
+        main_win.set_theme_mode(mode_str.into());
+        main_win.set_is_dark(is_dark);
+        main_win.set_enable_clipboard(settings.enable_clipboard_feature);
+        main_win.set_enable_emoji(settings.enable_emoji_feature);
+        main_win.set_enable_ocr(settings.enable_ocr_feature);
+        main_win.set_history_count(history_count);
+
+        refresh_window_conflicts(&main_win);
+
+        // 1. Change Theme Callback
+        let config_manager_c = config_manager.clone();
+        let app_weak_c = app_weak.clone();
+        let main_win_weak = main_win.as_weak();
+        main_win.on_change_theme(move |mode| {
+            let mode_str = mode.to_string();
+            let mut settings = config_manager_c.load();
+            settings.theme_mode = mode_str.clone();
+            let _ = config_manager_c.save(&settings);
+
+            let is_dark = match mode_str.as_str() {
+                "dark" => true,
+                "light" => false,
+                _ => is_system_dark_mode(),
+            };
+
+            if let Some(app) = app_weak_c.upgrade() {
+                app.set_theme_mode(mode.clone());
+                app.set_is_dark(is_dark);
+            }
+            if let Some(mwin) = main_win_weak.upgrade() {
+                mwin.set_theme_mode(mode);
+                mwin.set_is_dark(is_dark);
+            }
+        });
+
+        // 1b. Toggle Clipboard Callback
+        let config_manager_clip = config_manager.clone();
+        let app_weak_clip = app_weak.clone();
+        let main_win_weak_clip = main_win.as_weak();
+        main_win.on_toggle_clipboard(move |enabled| {
+            let mut settings = config_manager_clip.load();
+            settings.enable_clipboard_feature = enabled;
+            let _ = config_manager_clip.save(&settings);
+            let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+
+            if let Some(app) = app_weak_clip.upgrade() {
+                app.set_enable_clipboard(enabled);
+            }
+            if let Some(mwin) = main_win_weak_clip.upgrade() {
+                mwin.set_enable_clipboard(enabled);
+            }
+        });
+
+        // 1c. Toggle Emoji Callback
+        let config_manager_emoji = config_manager.clone();
+        let app_weak_emoji = app_weak.clone();
+        let main_win_weak_emoji = main_win.as_weak();
+        main_win.on_toggle_emoji(move |enabled| {
+            let mut settings = config_manager_emoji.load();
+            settings.enable_emoji_feature = enabled;
+            let _ = config_manager_emoji.save(&settings);
+            let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+
+            if let Some(app) = app_weak_emoji.upgrade() {
+                app.set_enable_emoji(enabled);
+            }
+            if let Some(mwin) = main_win_weak_emoji.upgrade() {
+                mwin.set_enable_emoji(enabled);
+            }
+        });
+
+        // 2. Toggle OCR Callback
+        let config_manager_ocr = config_manager.clone();
+        let app_weak_ocr = app_weak.clone();
+        let main_win_weak_ocr = main_win.as_weak();
+        main_win.on_toggle_ocr(move |enabled| {
+            let mut settings = config_manager_ocr.load();
+            settings.enable_ocr_feature = enabled;
+            let _ = config_manager_ocr.save(&settings);
+            let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+
+            if let Some(app) = app_weak_ocr.upgrade() {
+                app.set_enable_ocr(enabled);
+            }
+            if let Some(mwin) = main_win_weak_ocr.upgrade() {
+                mwin.set_enable_ocr(enabled);
+            }
+        });
+
+
+
+        // 3b. Fix Single Shortcut Callback
+        let main_win_weak_fix = main_win.as_weak();
+        main_win.on_fix_single_shortcut(move |sc_type| {
+            let sc_str = sc_type.to_string();
+            if let Err(e) = backend::shortcuts::fix_single_shortcut(&sc_str) {
+                eprintln!("[Main] Failed to fix single shortcut {}: {}", sc_str, e);
+            } else {
+                eprintln!("[Main] Successfully registered single shortcut {}", sc_str);
+            }
+            if let Some(mwin) = main_win_weak_fix.upgrade() {
+                refresh_window_conflicts(&mwin);
+            }
+        });
+
+        // 4. Clear History Callback
+        let conn_clear = conn.clone();
+        let app_weak_clear = app_weak.clone();
+        let main_win_weak_clear = main_win.as_weak();
+        main_win.on_clear_history(move || {
+            {
+                let db = conn_clear.lock();
+                let _ = backend::db::clear_history(&db);
+            }
+            refresh_clips(app_weak_clear.clone(), conn_clear.clone(), "".to_string());
+            if let Some(mwin) = main_win_weak_clear.upgrade() {
+                mwin.set_history_count(0);
+            }
+        });
+
+        // 5. Close Window Callback
+        let main_win_weak_close = main_win.as_weak();
+        main_win.on_close_window(move || {
+            if let Some(mwin) = main_win_weak_close.upgrade() {
+                let _ = mwin.window().hide();
+            }
+        });
+
+        let _ = main_win.window().show();
+        *store = Some(main_win);
+    }
+}
+
+/// Refreshes conflict properties on MainWindow
+fn refresh_window_conflicts(main_win: &MainWindow) {
+    let clip_conflict = backend::shortcuts::check_single_shortcut_conflict("toggle");
+    let emoji_conflict = backend::shortcuts::check_single_shortcut_conflict("emoji");
+    let ocr_conflict = backend::shortcuts::check_single_shortcut_conflict("ocr");
+
+    main_win.set_clip_has_conflict(clip_conflict);
+    main_win.set_emoji_has_conflict(emoji_conflict);
+    main_win.set_ocr_has_conflict(ocr_conflict);
 }

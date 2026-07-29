@@ -17,7 +17,7 @@ const SHORTCUTS: &[DesktopShortcut] = &[
     DesktopShortcut {
         id: "lincb-ople-in-toggle",
         name: "Toggle Clipboard History",
-        command: "lincb.ople.in",
+        command: "lincb.ople.in --toggle",
         gnome_binding: "<Alt>v",
         kde_shortcut_key: "Alt+V",
         xfce_property: "/commands/custom/<Alt>v",
@@ -77,6 +77,82 @@ pub fn detect_desktop_environment() -> String {
 }
 
 /// Check if Super+V is already registered with another action
+/// Checks if a specific shortcut key ("toggle", "emoji", "ocr") has an active system conflict
+pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
+    let target_binding = match shortcut_key {
+        "toggle" => "'<Alt>v'",
+        "emoji" => "'<Alt>period'",
+        "ocr" => "'<Alt><Shift>t'",
+        _ => return false,
+    };
+
+    let de = detect_desktop_environment();
+    if de == "gnome" && command_exists("gsettings") {
+        if shortcut_key == "emoji" {
+            let ibus_out = Command::new("gsettings")
+                .args(["get", "org.freedesktop.ibus.panel.emoji", "hotkey"])
+                .output();
+            if let Ok(out) = ibus_out {
+                let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if val.contains("<Alt>period") || val.contains("<Alt>.") {
+                    return true;
+                }
+            }
+        }
+
+        let output = Command::new("gsettings")
+            .args(["get", "org.gnome.settings-daemon.plugins.media-keys", "custom-keybindings"])
+            .output();
+
+        if let Ok(out) = output {
+            let list_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if list_str.starts_with('[') && list_str.ends_with(']') {
+                let custom_list: Vec<String> = list_str[1..list_str.len() - 1]
+                    .split(',')
+                    .map(|s| s.trim().trim_matches('\'').to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                for path in custom_list {
+                    if path.contains("lincb.ople.in") || path.contains("lincb-ople-in") {
+                        continue;
+                    }
+
+                    let base_path = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
+                    if let Ok(b_out) = Command::new("gsettings")
+                        .args(["get", &format!("{}:{}", base_path, path), "binding"])
+                        .output()
+                    {
+                        let binding = String::from_utf8_lossy(&b_out.stdout).trim().to_string();
+                        if binding == target_binding {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    } else if de == "xfce" && command_exists("xfconf-query") {
+        let prop = match shortcut_key {
+            "toggle" => "/commands/custom/<Alt>v",
+            "emoji" => "/commands/custom/<Alt>period",
+            "ocr" => "/commands/custom/<Alt><Shift>t",
+            _ => "",
+        };
+        if !prop.is_empty() {
+            let output = Command::new("xfconf-query")
+                .args(["--channel", "xfce4-keyboard-shortcuts", "--property", prop])
+                .output();
+            if let Ok(out) = output {
+                let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !val.is_empty() && !val.contains("lincb.ople.in") && !val.contains("Failed to query") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 pub fn check_shortcut_conflict() -> Result<Option<String>, String> {
     let de = detect_desktop_environment();
     if de == "gnome" {
@@ -99,7 +175,7 @@ pub fn check_shortcut_conflict() -> Result<Option<String>, String> {
                 .collect();
 
             for path in custom_list {
-                if path.contains("lincb.ople.in") {
+                if path.contains("lincb.ople.in") || path.contains("lincb-ople-in") {
                     continue;
                 }
 
@@ -111,7 +187,7 @@ pub fn check_shortcut_conflict() -> Result<Option<String>, String> {
                 
                 if let Ok(out) = b_output {
                     let binding = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if binding == "'<Super>v'" || binding == "'<Super>period'" {
+                    if binding == "'<Alt>v'" || binding == "'<Alt>period'" || binding == "'<Alt><Shift>t'" {
                         // Found a conflict! Retrieve the shortcut name
                         let n_output = Command::new("gsettings")
                             .args(["get", &format!("{}:{}", base_path, path), "name"])
@@ -126,23 +202,12 @@ pub fn check_shortcut_conflict() -> Result<Option<String>, String> {
                 }
             }
         }
-
-        // 2. Check system message tray toggle (default Super+V in older/newer GNOME)
-        let sys_output = Command::new("gsettings")
-            .args(["get", "org.gnome.shell.keybindings", "toggle-message-tray"])
-            .output();
-        if let Ok(out) = sys_output {
-            let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if val.contains("<Super>v") && !val.contains("<Shift>") {
-                return Ok(Some("GNOME Notification Message Tray (<Super>v)".to_string()));
-            }
-        }
     } else if de == "xfce" {
         if !command_exists("xfconf-query") {
             return Ok(None);
         }
         let output = Command::new("xfconf-query")
-            .args(["--channel", "xfce4-keyboard-shortcuts", "--property", "/commands/custom/<Super>v"])
+            .args(["--channel", "xfce4-keyboard-shortcuts", "--property", "/commands/custom/<Alt>v"])
             .output();
         if let Ok(out) = output {
             let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -243,7 +308,30 @@ pub fn fix_shortcut_conflict() -> Result<(), String> {
     register_shortcuts()
 }
 
-/// Register desktop environment shortcuts
+/// Register desktop environment shortcuts based on UserSettings feature flags
+pub fn register_shortcuts_filtered(settings: &crate::config::UserSettings) -> Result<(), String> {
+    if settings.enable_clipboard_feature {
+        fix_single_shortcut("toggle")?;
+    } else {
+        unregister_single_shortcut("toggle")?;
+    }
+
+    if settings.enable_emoji_feature {
+        fix_single_shortcut("emoji")?;
+    } else {
+        unregister_single_shortcut("emoji")?;
+    }
+
+    if settings.enable_ocr_feature {
+        fix_single_shortcut("ocr")?;
+    } else {
+        unregister_single_shortcut("ocr")?;
+    }
+
+    Ok(())
+}
+
+/// Register all desktop environment shortcuts
 pub fn register_shortcuts() -> Result<(), String> {
     let de = detect_desktop_environment();
     match de.as_str() {
@@ -252,6 +340,60 @@ pub fn register_shortcuts() -> Result<(), String> {
         "xfce" => register_xfce()?,
         _ => {
             return Err("Unsupported desktop environment. Map manually to 'lincb.ople.in'.".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Unregister a single shortcut by key ("toggle", "emoji", "ocr")
+pub fn unregister_single_shortcut(shortcut_key: &str) -> Result<(), String> {
+    let sc_id = match shortcut_key {
+        "toggle" => "lincb-ople-in-toggle",
+        "emoji" => "lincb-ople-in-emoji",
+        "ocr" => "lincb-ople-in-ocr",
+        _ => return Err("Invalid shortcut identifier".to_string()),
+    };
+
+    let de = detect_desktop_environment();
+    if de == "gnome" && command_exists("gsettings") {
+        let keybindings_list_schema = "org.gnome.settings-daemon.plugins.media-keys";
+        let output = Command::new("gsettings")
+            .args(["get", keybindings_list_schema, "custom-keybindings"])
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        let list_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if list_str.starts_with('[') && list_str.ends_with(']') {
+            let mut custom_list: Vec<String> = list_str[1..list_str.len() - 1]
+                .split(',')
+                .map(|s| s.trim().trim_matches('\'').to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            let binding_path = format!("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/{}/", sc_id);
+            custom_list.retain(|p| p != &binding_path);
+
+            let base_path = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding";
+            Command::new("gsettings")
+                .args(["reset-recursively", &format!("{}:{}", base_path, binding_path)])
+                .status().ok();
+
+            let list_formatted = format!("[{}]", custom_list.iter().map(|s| format!("'{}'", s)).collect::<Vec<String>>().join(", "));
+            Command::new("gsettings")
+                .args(["set", keybindings_list_schema, "custom-keybindings", &list_formatted])
+                .status().ok();
+        }
+    } else if de == "xfce" && command_exists("xfconf-query") {
+        let sc_prop = match shortcut_key {
+            "toggle" => "/commands/custom/<Super>v",
+            "emoji" => "/commands/custom/<Super>period",
+            "ocr" => "/commands/custom/<Alt><Shift>t",
+            _ => "",
+        };
+        if !sc_prop.is_empty() {
+            Command::new("xfconf-query")
+                .args(["--channel", "xfce4-keyboard-shortcuts", "--property", sc_prop, "--reset"])
+                .status().ok();
         }
     }
     Ok(())

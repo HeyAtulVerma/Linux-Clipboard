@@ -5,9 +5,11 @@ import { ScrollView } from "std-widgets.slint";
 
 import { SlintClipItem, SlintEmojiItem, SlintEmojiRow } from "./types.slint";
 import { HistoryCard } from "./history_card.slint";
-import { SetupView } from "./setup_view.slint";
 import { EmojiPanel } from "./emoji_panel.slint";
 import { PreferencesPanel } from "./preferences_panel.slint";
+import { MainWindow } from "./main_window.slint";
+
+export { MainWindow }
 
 export component AppWindow inherits Window {
     // Window properties
@@ -27,26 +29,23 @@ export component AppWindow inherits Window {
     callback search-changed(string);     // search text
     callback emoji-category-changed(int); // category index
     callback change-theme(string);
+    callback toggle-clipboard(bool);
+    callback toggle-emoji(bool);
     callback toggle-ocr(bool);
-    callback open-setup();
+    callback open-preferences();
     callback close-window();
-    callback check-shortcuts();
-    callback fix-shortcuts();
     callback fix-single-shortcut(string);
-    callback finish-setup();
 
     // Data models populated by Rust
     in-out property <[SlintClipItem]> clips: [];
     in-out property <[SlintEmojiRow]> emoji_rows: [];
     in-out property <int> selected_index: 0;
-    in-out property <int> active-tab: 0; // 0 = Clips, 1 = Emojis, 2 = GIFs/Kaomojis
+    in-out property <int> active-tab: 0; // 0 = Clips, 1 = Emojis
     in-out property <int> active-emoji-category: 0; // 0-8 for emoji categories
     in-out property <bool> is-dark: true;
+    in-out property <bool> enable-clipboard: true;
+    in-out property <bool> enable-emoji: true;
     in-out property <bool> enable-ocr: true;
-    in-out property <bool> show-setup: false;
-    in-out property <int> setup-step: 0; // 0 = Welcome, 1 = Detect/Conflict, 2 = Manual Setup
-    in-out property <string> shortcut-status: "detecting"; // "detecting", "conflict", "ok", "failed"
-    in-out property <string> shortcut-details: "";
     in-out property <string> search-placeholder: "Search clipboard...";
     in-out property <string> search-text: "";
     in-out property <string> theme-mode: "system";
@@ -108,23 +107,7 @@ export component AppWindow inherits Window {
             border-color: border-color;
             clip: true;
 
-            if (show-setup) : SetupView {
-                setup-step <=> root.setup-step;
-                shortcut-status <=> root.shortcut-status;
-                shortcut-details <=> root.shortcut-details;
-                text-color: root.text-color;
-                text-secondary: root.text-secondary;
-                accent-color: root.accent-color;
-                card-bg: root.card-bg;
-                border-color: root.border-color;
-                
-                check-shortcuts() => { root.check-shortcuts(); }
-                fix-shortcuts() => { root.fix-shortcuts(); }
-                fix-single-shortcut(sc) => { root.fix-single-shortcut(sc); }
-                finish-setup() => { root.finish-setup(); }
-            }
-
-            if (!show-setup) : VerticalLayout {
+            VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
 
@@ -225,7 +208,7 @@ export component AppWindow inherits Window {
                         pref-btn := TouchArea {
                             width: 24px;
                             height: 24px;
-                            clicked => { active-tab = 2; }
+                            clicked => { root.open-preferences(); }
                             
                             Rectangle {
                                 background: pref-btn.has-hover ? card-hover-bg : transparent;
@@ -286,7 +269,7 @@ export component AppWindow inherits Window {
                     spacing: 4px;
                     
                     // Tab 1: Clipboard
-                    TouchArea {
+                    if (enable-clipboard) : TouchArea {
                         clicked => {
                             active-tab = 0;
                             search-placeholder = "Search history...";
@@ -309,7 +292,7 @@ export component AppWindow inherits Window {
                     }
 
                     // Tab 2: Emojis
-                    TouchArea {
+                    if (enable-emoji) : TouchArea {
                         clicked => {
                             active-tab = 1;
                             search-placeholder = "Search emojis...";
@@ -335,7 +318,7 @@ export component AppWindow inherits Window {
                 }
 
                 // Search Bar Container
-                if (active-tab != 2) : Rectangle {
+                Rectangle {
                     height: 36px;
                     background: card-bg;
                     border-radius: 8px;
@@ -390,14 +373,33 @@ export component AppWindow inherits Window {
                 }
  
                  // Main tab layouts viewport
-                 if (active-tab == 0) : ScrollView {
+                 if (active-tab == 0 && enable-clipboard) : ScrollView {
                      viewport-y <=> root.scroll-y;
                      
                      VerticalLayout {
                          alignment: start;
                          spacing: 6px;
                          padding-right: 4px;
-                         
+                         padding-bottom: 8px;
+
+                         if (clips.length == 0) : VerticalLayout {
+                             alignment: center;
+                             spacing: 8px;
+                             height: 200px;
+                             Text {
+                                 text: "📋";
+                                 font-size: 32px;
+                                 horizontal-alignment: center;
+                             }
+                             Text {
+                                 text: "Clipboard history is empty";
+                                 font-size: 13px;
+                                 font-weight: 600;
+                                 color: root.text-secondary;
+                                 horizontal-alignment: center;
+                             }
+                         }
+
                          for clip[idx] in clips : VerticalLayout {
                              spacing: 4px;
                              
@@ -444,33 +446,56 @@ export component AppWindow inherits Window {
                          }
                      }
                  }
-                 if (active-tab == 1) : EmojiPanel {
-                     active-emoji-category <=> root.active-emoji-category;
-                     emoji-rows: root.emoji-rows;
-                     card-bg: root.card-bg;
-                     card-hover-bg: root.card-hover-bg;
-                     border-color: root.border-color;
-                     accent-color: root.accent-color;
-                     
-                     emoji-category-changed(cat) => { root.emoji-category-changed(cat); }
-                     record-emoji(emoji) => { root.record-emoji(emoji); }
-                 }
 
-                 if (active-tab == 2) : PreferencesPanel {
-                     theme-mode <=> root.theme-mode;
-                     enable-ocr <=> root.enable-ocr;
-                     text-color: root.text-color;
-                     text-secondary: root.text-secondary;
-                     card-bg: root.card-bg;
-                     card-hover-bg: root.card-hover-bg;
-                     border-color: root.border-color;
-                     accent-color: root.accent-color;
-                     
-                     change-theme(theme) => { root.change-theme(theme); }
-                     toggle-ocr(enabled) => { root.toggle-ocr(enabled); }
-                     open-setup() => { root.open-setup(); }
-                 }
+                 if (active-tab == 1 && enable-emoji) : EmojiPanel {
+                      active-emoji-category <=> root.active-emoji-category;
+                      emoji-rows: root.emoji-rows;
+                      card-bg: root.card-bg;
+                      card-hover-bg: root.card-hover-bg;
+                      border-color: root.border-color;
+                      accent-color: root.accent-color;
+                      
+                      emoji-category-changed(cat) => { root.emoji-category-changed(cat); }
+                      record-emoji(emoji) => { root.record-emoji(emoji); }
+                  }
+
+                 if (!enable-clipboard && !enable-emoji) : VerticalLayout {
+                      alignment: center;
+                      spacing: 12px;
+                      height: 220px;
+
+                      Text {
+                          text: "⚙️ Tools Disabled";
+                          font-size: 16px;
+                          font-weight: 700;
+                          color: root.text-color;
+                          horizontal-alignment: center;
+                      }
+                      Text {
+                          text: "Clipboard History & Emoji Picker are disabled in Preferences.";
+                          font-size: 11px;
+                          color: root.text-secondary;
+                          horizontal-alignment: center;
+                      }
+                      open-pref-btn := TouchArea {
+                          width: 140px;
+                          height: 32px;
+                          clicked => { root.open-preferences(); }
+                          Rectangle {
+                              background: open-pref-btn.has-hover ? root.card-hover-bg : root.accent-color;
+                              border-radius: 6px;
+                              Text {
+                                  text: "Open Preferences";
+                                  color: open-pref-btn.has-hover ? root.text-color : #ffffff;
+                                  font-size: 12px;
+                                  font-weight: 600;
+                                  horizontal-alignment: center;
+                                  vertical-alignment: center;
+                              }
+                          }
+                      }
+                  }
              }
-        }
-    }
+         }
+     }
 }
