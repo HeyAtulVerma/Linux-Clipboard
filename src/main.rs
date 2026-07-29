@@ -94,9 +94,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     app.set_is_dark(initial_is_dark);
     app.set_theme_mode(settings.theme_mode.clone().into());
+    app.set_accent_hex(settings.accent_color.clone().into());
     app.set_enable_clipboard(settings.enable_clipboard_feature);
     app.set_enable_emoji(settings.enable_emoji_feature);
     app.set_enable_ocr(settings.enable_ocr_feature);
+
     
 
     // Populate initial emojis
@@ -582,6 +584,7 @@ fn show_main_window(
 
         main_win.set_theme_mode(mode_str.into());
         main_win.set_is_dark(is_dark);
+        main_win.set_accent_hex(settings.accent_color.clone().into());
         main_win.set_enable_clipboard(settings.enable_clipboard_feature);
         main_win.set_enable_emoji(settings.enable_emoji_feature);
         main_win.set_enable_ocr(settings.enable_ocr_feature);
@@ -614,6 +617,25 @@ fn show_main_window(
                 mwin.set_is_dark(is_dark);
             }
         });
+
+        // 1b. Change Accent Color Callback
+        let config_manager_accent = config_manager.clone();
+        let app_weak_accent = app_weak.clone();
+        let main_win_weak_accent = main_win.as_weak();
+        main_win.on_change_accent(move |hex| {
+            let hex_str = hex.to_string();
+            let mut settings = config_manager_accent.load();
+            settings.accent_color = hex_str.clone();
+            let _ = config_manager_accent.save(&settings);
+
+            if let Some(app) = app_weak_accent.upgrade() {
+                app.set_accent_hex(hex.clone());
+            }
+            if let Some(mwin) = main_win_weak_accent.upgrade() {
+                mwin.set_accent_hex(hex);
+            }
+        });
+
 
         // 1b. Toggle Clipboard Callback
         let config_manager_clip = config_manager.clone();
@@ -700,13 +722,7 @@ fn show_main_window(
             }
         });
 
-        // 5. Close Window Callback
-        let main_win_weak_close = main_win.as_weak();
-        main_win.on_close_window(move || {
-            if let Some(mwin) = main_win_weak_close.upgrade() {
-                let _ = mwin.window().hide();
-            }
-        });
+
 
         let _ = main_win.window().show();
         *store = Some(main_win);

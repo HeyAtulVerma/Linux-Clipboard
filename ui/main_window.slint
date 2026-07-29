@@ -1,18 +1,19 @@
-// Linux Clipboard Standalone Main Window with 4 Categorized Sections
+// MagicToys — Main Settings Window
+// Clean PowerToys-inspired layout with Ople brand palette.
 
 import { ScrollView } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
-    title: "Linux Clipboard Preferences";
+    title: "MagicToys";
     icon: @image-url("../icon_rounded.png");
-    width: 580px;
-    height: 450px;
+    preferred-width: 800px;
+    preferred-height: 560px;
     background: bg-color;
 
-    // Active Section index: 0 = General, 1 = Clipboard, 2 = Emoji, 3 = Text Extractor
+    // Active section: 0=General, 1=Clipboard, 2=Emoji, 3=Text Extractor
     in-out property <int> active-section: 0;
 
-    // Theme & Styling properties
+    // Core properties
     in-out property <string> theme-mode: "system";
     in-out property <bool> is-dark: true;
     in-out property <bool> enable-clipboard: true;
@@ -22,217 +23,226 @@ export component MainWindow inherits Window {
     in-out property <bool> clip-has-conflict: false;
     in-out property <bool> emoji-has-conflict: false;
     in-out property <bool> ocr-has-conflict: false;
+    in-out property <string> accent-hex: "#f97316";
 
-    // Color definitions
-    in-out property <color> bg-color: is-dark ? #0f131d : #f8f9fa;
-    in-out property <color> card-bg: is-dark ? #181d2a : #ffffff;
-    in-out property <color> card-hover-bg: is-dark ? #222838 : #f1f3f5;
-    in-out property <color> text-color: is-dark ? #f1f3f5 : #1a1d20;
-    in-out property <color> text-secondary: is-dark ? #8b95a5 : #6c757d;
-    in-out property <color> border-color: is-dark ? #2a3142 : #dee2e6;
-    in-out property <color> accent-color: #3b82f6;
+    // Design tokens — Ople black palette
+    property <color> bg-color:       is-dark ? #0a0a0a : #f5f5f5;
+    property <color> sidebar-bg:     is-dark ? #111111 : #ebebeb;
+    property <color> card-bg:        is-dark ? #161616 : #ffffff;
+    property <color> card-hover-bg:  is-dark ? #1e1e1e : #f0f0f0;
+    property <color> text-color:     is-dark ? #f5f5f5 : #111111;
+    property <color> text-muted:     is-dark ? #737373 : #737373;
+    property <color> border-color:   is-dark ? #1f1f1f : #e0e0e0;
+    property <color> danger-color:   #ef4444;
+
+    // Accent — resolved from hex string (default Ople orange, user-switchable)
+    property <color> accent: accent-hex == "#f97316" ? #f97316
+        : accent-hex == "#3b82f6" ? #3b82f6
+        : accent-hex == "#8b5cf6" ? #8b5cf6
+        : accent-hex == "#22c55e" ? #22c55e
+        : accent-hex == "#f43f5e" ? #f43f5e
+        : accent-hex == "#06b6d4" ? #06b6d4
+        : #f97316;
 
     // Callbacks
     callback change-theme(string);
+    callback change-accent(string);
     callback toggle-clipboard(bool);
     callback toggle-emoji(bool);
     callback toggle-ocr(bool);
     callback fix-single-shortcut(string);
     callback clear-history();
-    callback close-window();
 
-    VerticalLayout {
-        padding: 0;
+    // ── Root layout ──────────────────────────────────────
+    HorizontalLayout {
         spacing: 0;
 
-        // Custom Titlebar Header
+        // ── SIDEBAR ─────────────────────────────────────
         Rectangle {
-            height: 44px;
-            background: card-bg;
+            width: 200px;
+            background: sidebar-bg;
             border-width: 1px;
             border-color: border-color;
+            // Visible only on the right edge (simulate right-border-only)
 
-            HorizontalLayout {
-                padding-left: 14px;
-                padding-right: 14px;
-                alignment: space-between;
 
+            VerticalLayout {
+                padding-top: 20px;
+                padding-bottom: 16px;
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 2px;
+                alignment: start;
+
+                // Brand header
                 HorizontalLayout {
                     spacing: 10px;
+                    padding-bottom: 20px;
+                    padding-left: 4px;
 
                     Image {
                         source: @image-url("../icon_rounded.png");
-                        width: 20px;
-                        height: 20px;
+                        width: 22px;
+                        height: 22px;
                     }
 
-                    Text {
-                        text: "Preferences";
-                        font-size: 14px;
-                        font-weight: 700;
-                        color: text-color;
-                        vertical-alignment: center;
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "MagicToys";
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: text-color;
+                        }
+
+                        Text {
+                            text: "by Ople";
+                            font-size: 10px;
+                            color: accent;
+                        }
                     }
                 }
 
-                // Close Button
-                close-btn := TouchArea {
-                    width: 26px;
-                    height: 26px;
-                    clicked => { root.close-window(); }
-
+                // NAV ITEM helper — General
+                nav-general := TouchArea {
+                    height: 38px;
+                    clicked => { root.active-section = 0; }
                     Rectangle {
-                        background: close-btn.has-hover ? #e81123 : transparent;
+                        background: root.active-section == 0 ? accent : (nav-general.has-hover ? card-hover-bg : transparent);
                         border-radius: 6px;
-                        Text {
-                            text: "✕";
-                            font-size: 12px;
-                            color: close-btn.has-hover ? #ffffff : text-secondary;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            spacing: 10px;
+                            Text {
+                                text: "General";
+                                font-size: 12px;
+                                font-weight: root.active-section == 0 ? 700 : 400;
+                                color: root.active-section == 0 ? #ffffff : text-color;
+                                vertical-alignment: center;
+                            }
                         }
                     }
+                }
+
+                nav-clipboard := TouchArea {
+                    height: 38px;
+                    clicked => { root.active-section = 1; }
+                    Rectangle {
+                        background: root.active-section == 1 ? accent : (nav-clipboard.has-hover ? card-hover-bg : transparent);
+                        border-radius: 6px;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            spacing: 10px;
+                            Text {
+                                text: "Clipboard";
+                                font-size: 12px;
+                                font-weight: root.active-section == 1 ? 700 : 400;
+                                color: root.active-section == 1 ? #ffffff : text-color;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                nav-emoji := TouchArea {
+                    height: 38px;
+                    clicked => { root.active-section = 2; }
+                    Rectangle {
+                        background: root.active-section == 2 ? accent : (nav-emoji.has-hover ? card-hover-bg : transparent);
+                        border-radius: 6px;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            spacing: 10px;
+                            Text {
+                                text: "Emoji Picker";
+                                font-size: 12px;
+                                font-weight: root.active-section == 2 ? 700 : 400;
+                                color: root.active-section == 2 ? #ffffff : text-color;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                nav-ocr := TouchArea {
+                    height: 38px;
+                    clicked => { root.active-section = 3; }
+                    Rectangle {
+                        background: root.active-section == 3 ? accent : (nav-ocr.has-hover ? card-hover-bg : transparent);
+                        border-radius: 6px;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            spacing: 10px;
+                            Text {
+                                text: "Text Extractor";
+                                font-size: 12px;
+                                font-weight: root.active-section == 3 ? 700 : 400;
+                                color: root.active-section == 3 ? #ffffff : text-color;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Spacer
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                // Version badge
+                Text {
+                    text: "v0.1.0 Beta";
+                    font-size: 10px;
+                    color: text-muted;
+                    horizontal-alignment: center;
+                    padding-bottom: 4px;
                 }
             }
         }
 
-        // Main Sidebar + Content Body Layout
-        HorizontalLayout {
+        // ── CONTENT AREA ─────────────────────────────────
+        VerticalLayout {
+            horizontal-stretch: 1;
             spacing: 0;
 
-            // ==========================================
-            // LEFT SIDEBAR (4 Options)
-            // ==========================================
+            // Topbar — section title only; OS provides the window close/min/max buttons
             Rectangle {
-                width: 160px;
+                height: 46px;
                 background: card-bg;
                 border-width: 1px;
                 border-color: border-color;
 
-                VerticalLayout {
-                    padding: 8px;
-                    spacing: 4px;
-                    alignment: start;
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
 
-                    // Option 1: General
-                    nav-general := TouchArea {
-                        height: 36px;
-                        clicked => { root.active-section = 0; }
-
-                        Rectangle {
-                            background: root.active-section == 0 ? accent-color : (nav-general.has-hover ? card-hover-bg : transparent);
-                            border-radius: 6px;
-
-                            HorizontalLayout {
-                                padding-left: 10px;
-                                spacing: 8px;
-
-                                Text {
-                                    text: "⚙️ General";
-                                    font-size: 12px;
-                                    font-weight: root.active-section == 0 ? 700 : 500;
-                                    color: root.active-section == 0 ? #ffffff : text-color;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
-                    }
-
-                    // Option 2: Clipboard
-                    nav-clip := TouchArea {
-                        height: 36px;
-                        clicked => { root.active-section = 1; }
-
-                        Rectangle {
-                            background: root.active-section == 1 ? accent-color : (nav-clip.has-hover ? card-hover-bg : transparent);
-                            border-radius: 6px;
-
-                            HorizontalLayout {
-                                padding-left: 10px;
-                                spacing: 8px;
-
-                                Text {
-                                    text: "📋 Clipboard";
-                                    font-size: 12px;
-                                    font-weight: root.active-section == 1 ? 700 : 500;
-                                    color: root.active-section == 1 ? #ffffff : text-color;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
-                    }
-
-                    // Option 3: Emoji
-                    nav-emoji := TouchArea {
-                        height: 36px;
-                        clicked => { root.active-section = 2; }
-
-                        Rectangle {
-                            background: root.active-section == 2 ? accent-color : (nav-emoji.has-hover ? card-hover-bg : transparent);
-                            border-radius: 6px;
-
-                            HorizontalLayout {
-                                padding-left: 10px;
-                                spacing: 8px;
-
-                                Text {
-                                    text: "😊 Emoji";
-                                    font-size: 12px;
-                                    font-weight: root.active-section == 2 ? 700 : 500;
-                                    color: root.active-section == 2 ? #ffffff : text-color;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
-                    }
-
-                    // Option 4: Text Extractor
-                    nav-ocr := TouchArea {
-                        height: 36px;
-                        clicked => { root.active-section = 3; }
-
-                        Rectangle {
-                            background: root.active-section == 3 ? accent-color : (nav-ocr.has-hover ? card-hover-bg : transparent);
-                            border-radius: 6px;
-
-                            HorizontalLayout {
-                                padding-left: 10px;
-                                spacing: 8px;
-
-                                Text {
-                                    text: "🔍 Text Extractor";
-                                    font-size: 12px;
-                                    font-weight: root.active-section == 3 ? 700 : 500;
-                                    color: root.active-section == 3 ? #ffffff : text-color;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
+                    Text {
+                        text: root.active-section == 0 ? "General"
+                            : root.active-section == 1 ? "Clipboard History"
+                            : root.active-section == 2 ? "Emoji Picker"
+                            : "Text Extractor (OCR)";
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: text-color;
+                        vertical-alignment: center;
                     }
                 }
             }
 
-            // ==========================================
-            // RIGHT CONTENT PANEL
-            // ==========================================
+            // Scrollable content
             ScrollView {
                 VerticalLayout {
-                    padding: 16px;
-                    spacing: 16px;
+                    padding: 24px;
+                    spacing: 12px;
                     alignment: start;
 
-                    // SECTION 1: GENERAL (Theme Settings & App Info)
-                    if (root.active-section == 0) : VerticalLayout {
+                    // ═══════════════════════════════
+                    // SECTION 0: GENERAL
+                    // ═══════════════════════════════
+                    if (root.active-section == 0): VerticalLayout {
                         spacing: 12px;
 
-                        Text {
-                            text: "⚙️ General Settings";
-                            font-size: 15px;
-                            font-weight: 700;
-                            color: text-color;
-                        }
-
-                        // Theme Mode Card
+                        // Theme card
                         Rectangle {
                             background: card-bg;
                             border-radius: 8px;
@@ -240,82 +250,189 @@ export component MainWindow inherits Window {
                             border-color: border-color;
 
                             VerticalLayout {
-                                padding: 14px;
-                                spacing: 12px;
+                                padding: 16px;
+                                spacing: 14px;
 
-                                VerticalLayout {
-                                    spacing: 3px;
-                                    Text {
-                                        text: "Color Theme Mode";
-                                        font-size: 13px;
-                                        font-weight: 600;
-                                        color: text-color;
+                                // Row: label + pill selector
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Appearance";
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
+
+                                        Text {
+                                            text: "Choose light, dark, or follow system theme";
+                                            font-size: 11px;
+                                            color: text-muted;
+                                        }
                                     }
-                                    Text {
-                                        text: "Select light, dark, or automatically match system desktop appearance.";
-                                        font-size: 11px;
-                                        color: text-secondary;
-                                        wrap: word-wrap;
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        height: 30px;
+
+                                        TouchArea {
+                                            width: 64px;
+                                            clicked => { root.change-theme("system"); }
+                                            Rectangle {
+                                                background: root.theme-mode == "system" ? accent : card-hover-bg;
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: root.theme-mode == "system" ? accent : border-color;
+                                                Text {
+                                                    text: "Auto";
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    color: root.theme-mode == "system" ? #ffffff : text-muted;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        TouchArea {
+                                            width: 56px;
+                                            clicked => { root.change-theme("dark"); }
+                                            Rectangle {
+                                                background: root.theme-mode == "dark" ? accent : card-hover-bg;
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: root.theme-mode == "dark" ? accent : border-color;
+                                                Text {
+                                                    text: "Dark";
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    color: root.theme-mode == "dark" ? #ffffff : text-muted;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        TouchArea {
+                                            width: 56px;
+                                            clicked => { root.change-theme("light"); }
+                                            Rectangle {
+                                                background: root.theme-mode == "light" ? accent : card-hover-bg;
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: root.theme-mode == "light" ? accent : border-color;
+                                                Text {
+                                                    text: "Light";
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    color: root.theme-mode == "light" ? #ffffff : text-muted;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
+                                // Divider
+                                Rectangle {
+                                    height: 1px;
+                                    background: border-color;
+                                }
+
+                                // Row: Accent color swatches
                                 HorizontalLayout {
-                                    spacing: 8px;
-                                    height: 34px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Accent Color";
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
 
-                                    // Auto / System
-                                    TouchArea {
-                                        clicked => { root.change-theme("system"); }
-                                        Rectangle {
-                                            background: root.theme-mode == "system" ? accent-color : card-hover-bg;
-                                            border-radius: 6px;
-                                            border-width: 1px;
-                                            border-color: root.theme-mode == "system" ? accent-color : border-color;
-                                            Text {
-                                                text: "💻 Auto (System)";
-                                                color: root.theme-mode == "system" ? #ffffff : text-color;
-                                                font-size: 11px;
-                                                font-weight: 600;
-                                                horizontal-alignment: center;
-                                                vertical-alignment: center;
-                                            }
+                                        Text {
+                                            text: "Active color used across the interface";
+                                            font-size: 11px;
+                                            color: text-muted;
                                         }
                                     }
 
-                                    // Dark
-                                    TouchArea {
-                                        clicked => { root.change-theme("dark"); }
-                                        Rectangle {
-                                            background: root.theme-mode == "dark" ? accent-color : card-hover-bg;
-                                            border-radius: 6px;
-                                            border-width: 1px;
-                                            border-color: root.theme-mode == "dark" ? accent-color : border-color;
-                                            Text {
-                                                text: "🌙 Dark";
-                                                color: root.theme-mode == "dark" ? #ffffff : text-color;
-                                                font-size: 11px;
-                                                font-weight: 600;
-                                                horizontal-alignment: center;
-                                                vertical-alignment: center;
+                                    HorizontalLayout {
+                                        spacing: 8px;
+
+                                        // Orange (Ople default)
+                                        swatch-orange := TouchArea {
+                                            width: 24px;
+                                            height: 24px;
+                                            clicked => { root.change-accent("#f97316"); }
+                                            Rectangle {
+                                                background: #f97316;
+                                                border-radius: 12px;
+                                                border-width: root.accent-hex == "#f97316" ? 2px : 0px;
+                                                border-color: text-color;
                                             }
                                         }
-                                    }
-
-                                    // Light
-                                    TouchArea {
-                                        clicked => { root.change-theme("light"); }
-                                        Rectangle {
-                                            background: root.theme-mode == "light" ? accent-color : card-hover-bg;
-                                            border-radius: 6px;
-                                            border-width: 1px;
-                                            border-color: root.theme-mode == "light" ? accent-color : border-color;
-                                            Text {
-                                                text: "☀️ Light";
-                                                color: root.theme-mode == "light" ? #ffffff : text-color;
-                                                font-size: 11px;
-                                                font-weight: 600;
-                                                horizontal-alignment: center;
-                                                vertical-alignment: center;
+                                        // Blue
+                                        swatch-blue := TouchArea {
+                                            width: 24px;
+                                            height: 24px;
+                                            clicked => { root.change-accent("#3b82f6"); }
+                                            Rectangle {
+                                                background: #3b82f6;
+                                                border-radius: 12px;
+                                                border-width: root.accent-hex == "#3b82f6" ? 2px : 0px;
+                                                border-color: text-color;
+                                            }
+                                        }
+                                        // Violet
+                                        swatch-violet := TouchArea {
+                                            width: 24px;
+                                            height: 24px;
+                                            clicked => { root.change-accent("#8b5cf6"); }
+                                            Rectangle {
+                                                background: #8b5cf6;
+                                                border-radius: 12px;
+                                                border-width: root.accent-hex == "#8b5cf6" ? 2px : 0px;
+                                                border-color: text-color;
+                                            }
+                                        }
+                                        // Green
+                                        swatch-green := TouchArea {
+                                            width: 24px;
+                                            height: 24px;
+                                            clicked => { root.change-accent("#22c55e"); }
+                                            Rectangle {
+                                                background: #22c55e;
+                                                border-radius: 12px;
+                                                border-width: root.accent-hex == "#22c55e" ? 2px : 0px;
+                                                border-color: text-color;
+                                            }
+                                        }
+                                        // Rose
+                                        swatch-rose := TouchArea {
+                                            width: 24px;
+                                            height: 24px;
+                                            clicked => { root.change-accent("#f43f5e"); }
+                                            Rectangle {
+                                                background: #f43f5e;
+                                                border-radius: 12px;
+                                                border-width: root.accent-hex == "#f43f5e" ? 2px : 0px;
+                                                border-color: text-color;
+                                            }
+                                        }
+                                        // Cyan
+                                        swatch-cyan := TouchArea {
+                                            width: 24px;
+                                            height: 24px;
+                                            clicked => { root.change-accent("#06b6d4"); }
+                                            Rectangle {
+                                                background: #06b6d4;
+                                                border-radius: 12px;
+                                                border-width: root.accent-hex == "#06b6d4" ? 2px : 0px;
+                                                border-color: text-color;
                                             }
                                         }
                                     }
@@ -323,176 +440,171 @@ export component MainWindow inherits Window {
                             }
                         }
 
-                        // App Info Card
+                        // About card
                         Rectangle {
                             background: card-bg;
                             border-radius: 8px;
                             border-width: 1px;
                             border-color: border-color;
 
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 8px;
+                            HorizontalLayout {
+                                padding: 16px;
+                                spacing: 14px;
+                                alignment: space-between;
 
-                                HorizontalLayout {
-                                    alignment: space-between;
+                                VerticalLayout {
+                                    spacing: 4px;
                                     Text {
-                                        text: "Linux Clipboard";
+                                        text: "MagicToys";
                                         font-size: 13px;
                                         font-weight: 700;
                                         color: text-color;
                                     }
+
                                     Text {
-                                        text: "by Ople (lincb.ople.in)";
+                                        text: "Native clipboard, emoji, and OCR tools for Linux";
                                         font-size: 11px;
-                                        color: accent-color;
-                                        font-weight: 600;
+                                        color: text-muted;
                                     }
                                 }
 
                                 Text {
-                                    text: "Native Rust + Slint + SQLite Clipboard Manager for Linux (X11 & Wayland).";
+                                    text: "lincb.ople.in";
                                     font-size: 11px;
-                                    color: text-secondary;
-                                    wrap: word-wrap;
-                                }
-
-                                Text {
-                                    text: "Version: v0.0.3 (Beta)";
-                                    font-size: 11px;
-                                    color: text-secondary;
+                                    font-weight: 600;
+                                    color: accent;
+                                    vertical-alignment: center;
                                 }
                             }
                         }
                     }
 
-                    // SECTION 2: CLIPBOARD
-                    if (root.active-section == 1) : VerticalLayout {
+                    // ═══════════════════════════════
+                    // SECTION 1: CLIPBOARD
+                    // ═══════════════════════════════
+                    if (root.active-section == 1): VerticalLayout {
                         spacing: 12px;
 
-                        Text {
-                            text: "📋 Clipboard Settings & Hotkey";
-                            font-size: 15px;
-                            font-weight: 700;
-                            color: text-color;
-                        }
-
-                        // Shortcut & Registration Card
+                        // Tool enable card (with conflict border)
                         Rectangle {
-                            background: (root.enable-clipboard && root.clip-has-conflict) ? (is-dark ? #2c1618 : #fef2f2) : card-bg;
+                            background: (root.enable-clipboard && root.clip-has-conflict) ? (is-dark ? #1a0d0d : #fff5f5) : card-bg;
                             border-radius: 8px;
-                            border-width: (root.enable-clipboard && root.clip-has-conflict) ? 2px : 1px;
-                            border-color: (root.enable-clipboard && root.clip-has-conflict) ? #ef4444 : border-color;
+                            border-width: (root.enable-clipboard && root.clip-has-conflict) ? 1.5px : 1px;
+                            border-color: (root.enable-clipboard && root.clip-has-conflict) ? danger-color : border-color;
 
                             VerticalLayout {
-                                padding: 14px;
+                                padding: 16px;
                                 spacing: 12px;
 
+                                // Toggle row
                                 HorizontalLayout {
                                     alignment: space-between;
 
                                     VerticalLayout {
-                                        spacing: 3px;
+                                        spacing: 2px;
                                         Text {
-                                            text: "Enable Clipboard History Tool";
-                                            font-size: 13px;
+                                            text: "Clipboard History";
+                                            font-size: 12px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
+
                                         Text {
-                                            text: "Monitor clipboard changes and enable Alt + V drawer";
+                                            text: "Monitor clipboard changes — shortcut: Alt + V";
                                             font-size: 11px;
-                                            color: text-secondary;
-                                            wrap: word-wrap;
+                                            color: text-muted;
                                         }
                                     }
 
-                                    TouchArea {
-                                        width: 50px;
-                                        height: 26px;
+                                    // Toggle switch
+                                    toggle-clip := TouchArea {
+                                        width: 44px;
+                                        height: 24px;
                                         clicked => {
                                             root.enable-clipboard = !root.enable-clipboard;
                                             root.toggle-clipboard(root.enable-clipboard);
                                         }
                                         Rectangle {
-                                            background: root.enable-clipboard ? accent-color : card-hover-bg;
-                                            border-radius: 13px;
+                                            background: root.enable-clipboard ? accent : card-hover-bg;
+                                            border-radius: 12px;
                                             border-width: 1px;
-                                            border-color: root.enable-clipboard ? accent-color : border-color;
-
+                                            border-color: root.enable-clipboard ? accent : border-color;
                                             Rectangle {
-                                                x: root.enable-clipboard ? 26px : 2px;
+                                                x: root.enable-clipboard ? 22px : 2px;
                                                 y: 2px;
-                                                width: 20px;
-                                                height: 20px;
-                                                border-radius: 10px;
+                                                width: 18px;
+                                                height: 18px;
+                                                border-radius: 9px;
                                                 background: #ffffff;
                                             }
                                         }
                                     }
                                 }
 
-                                if (root.enable-clipboard && root.clip-has-conflict) : Text {
-                                    text: "⚠️ Shortcut conflict detected with system keybindings";
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: #ef4444;
-                                }
-
+                                // Shortcut badge row
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    VerticalLayout {
-                                        spacing: 2px;
-                                        Text {
-                                            text: "Global Shortcut";
-                                            font-size: 13px;
-                                            font-weight: 600;
-                                            color: text-color;
-                                        }
-                                        Text {
-                                            text: "Open history drawer to paste text or images";
-                                            font-size: 11px;
-                                            color: text-secondary;
-                                        }
+
+                                    Text {
+                                        text: "Global Shortcut";
+                                        font-size: 11px;
+                                        color: text-muted;
+                                        vertical-alignment: center;
                                     }
-                                    Rectangle {
-                                        background: card-hover-bg;
-                                        border-radius: 4px;
-                                        height: 24px;
-                                        HorizontalLayout {
-                                            padding-left: 8px;
-                                            padding-right: 8px;
-                                            Text {
-                                                text: "Alt + V";
-                                                font-size: 11px;
-                                                font-weight: 700;
-                                                color: accent-color;
-                                                vertical-alignment: center;
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+
+                                        Rectangle {
+                                            background: card-hover-bg;
+                                            border-radius: 4px;
+                                            border-width: 1px;
+                                            border-color: border-color;
+                                            height: 22px;
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                Text {
+                                                    text: "Alt + V";
+                                                    font-size: 11px;
+                                                    font-weight: 700;
+                                                    color: accent;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        // Fix shortcut button — only if conflict
+                                        if (root.enable-clipboard && root.clip-has-conflict): fix-clip := TouchArea {
+                                            width: 90px;
+                                            height: 22px;
+                                            clicked => { root.fix-single-shortcut("toggle"); }
+                                            Rectangle {
+                                                background: fix-clip.has-hover ? #dc2626 : danger-color;
+                                                border-radius: 4px;
+                                                Text {
+                                                    text: "Fix Shortcut";
+                                                    font-size: 10px;
+                                                    font-weight: 700;
+                                                    color: #ffffff;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
                                             }
                                         }
                                     }
                                 }
 
-                                if (root.enable-clipboard && root.clip-has-conflict) : fix-clip-btn := TouchArea {
-                                    height: 30px;
-                                    clicked => { root.fix-single-shortcut("toggle"); }
-                                    Rectangle {
-                                        background: fix-clip-btn.has-hover ? #ef4444 : #dc2626;
-                                        border-radius: 6px;
-                                        Text {
-                                            text: "🔧 Fix Shortcut";
-                                            color: #ffffff;
-                                            font-size: 11px;
-                                            font-weight: 600;
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                        }
-                                    }
+                                // Conflict warning — only if conflict
+                                if (root.enable-clipboard && root.clip-has-conflict): Text {
+                                    text: "Shortcut conflict detected with system keybindings";
+                                    font-size: 11px;
+                                    color: danger-color;
                                 }
                             }
                         }
 
-                        // Storage & Clear History Card
+                        // History storage card
                         Rectangle {
                             background: card-bg;
                             border-radius: 8px;
@@ -500,22 +612,31 @@ export component MainWindow inherits Window {
                             border-color: border-color;
 
                             VerticalLayout {
-                                padding: 14px;
+                                padding: 16px;
                                 spacing: 12px;
 
                                 HorizontalLayout {
                                     alignment: space-between;
                                     Text {
-                                        text: "Saved History Snippets";
-                                        font-size: 12px;
-                                        color: text-color;
-                                    }
-                                    Text {
-                                        text: root.history-count + " items";
+                                        text: "Saved Items";
                                         font-size: 12px;
                                         font-weight: 600;
-                                        color: text-secondary;
+                                        color: text-color;
+                                        vertical-alignment: center;
                                     }
+
+                                    Text {
+                                        text: root.history-count + " clips";
+                                        font-size: 12px;
+                                        font-weight: 700;
+                                        color: accent;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 1px;
+                                    background: border-color;
                                 }
 
                                 HorizontalLayout {
@@ -523,32 +644,33 @@ export component MainWindow inherits Window {
                                     VerticalLayout {
                                         spacing: 2px;
                                         Text {
-                                            text: "Clear History Database";
+                                            text: "Clear History";
                                             font-size: 12px;
                                             font-weight: 600;
-                                            color: #e81123;
+                                            color: danger-color;
                                         }
+
                                         Text {
-                                            text: "Permanently delete stored clips and images";
+                                            text: "Permanently delete all stored clips";
                                             font-size: 11px;
-                                            color: text-secondary;
+                                            color: text-muted;
                                         }
                                     }
 
-                                    clear-btn := TouchArea {
-                                        width: 85px;
+                                    clr-btn := TouchArea {
+                                        width: 76px;
                                         height: 28px;
                                         clicked => { root.clear-history(); }
                                         Rectangle {
-                                            background: clear-btn.has-hover ? #e81123 : card-hover-bg;
+                                            background: clr-btn.has-hover ? danger-color : card-hover-bg;
                                             border-radius: 6px;
                                             border-width: 1px;
-                                            border-color: clear-btn.has-hover ? #e81123 : border-color;
+                                            border-color: clr-btn.has-hover ? danger-color : danger-color;
                                             Text {
                                                 text: "Clear All";
-                                                color: clear-btn.has-hover ? #ffffff : #e81123;
                                                 font-size: 11px;
                                                 font-weight: 600;
+                                                color: clr-btn.has-hover ? #ffffff : danger-color;
                                                 horizontal-alignment: center;
                                                 vertical-alignment: center;
                                             }
@@ -559,252 +681,237 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    // SECTION 3: EMOJI
-                    if (root.active-section == 2) : VerticalLayout {
+                    // ═══════════════════════════════
+                    // SECTION 2: EMOJI
+                    // ═══════════════════════════════
+                    if (root.active-section == 2): VerticalLayout {
                         spacing: 12px;
 
-                        Text {
-                            text: "😊 Emoji Picker Settings & Hotkey";
-                            font-size: 15px;
-                            font-weight: 700;
-                            color: text-color;
-                        }
-
                         Rectangle {
-                            background: (root.enable-emoji && root.emoji-has-conflict) ? (is-dark ? #2c1618 : #fef2f2) : card-bg;
+                            background: (root.enable-emoji && root.emoji-has-conflict) ? (is-dark ? #1a0d0d : #fff5f5) : card-bg;
                             border-radius: 8px;
-                            border-width: (root.enable-emoji && root.emoji-has-conflict) ? 2px : 1px;
-                            border-color: (root.enable-emoji && root.emoji-has-conflict) ? #ef4444 : border-color;
+                            border-width: (root.enable-emoji && root.emoji-has-conflict) ? 1.5px : 1px;
+                            border-color: (root.enable-emoji && root.emoji-has-conflict) ? danger-color : border-color;
 
                             VerticalLayout {
-                                padding: 14px;
+                                padding: 16px;
                                 spacing: 12px;
 
                                 HorizontalLayout {
                                     alignment: space-between;
 
                                     VerticalLayout {
-                                        spacing: 3px;
+                                        spacing: 2px;
                                         Text {
-                                            text: "Enable Emoji Picker Tool";
-                                            font-size: 13px;
+                                            text: "Emoji Picker";
+                                            font-size: 12px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
+
                                         Text {
-                                            text: "Enable emoji tab and Alt + . quick shortcut";
+                                            text: "Enable emoji picker tab — shortcut: Alt + .";
                                             font-size: 11px;
-                                            color: text-secondary;
-                                            wrap: word-wrap;
+                                            color: text-muted;
                                         }
                                     }
 
-                                    TouchArea {
-                                        width: 50px;
-                                        height: 26px;
+                                    toggle-emoji-sw := TouchArea {
+                                        width: 44px;
+                                        height: 24px;
                                         clicked => {
                                             root.enable-emoji = !root.enable-emoji;
                                             root.toggle-emoji(root.enable-emoji);
                                         }
                                         Rectangle {
-                                            background: root.enable-emoji ? accent-color : card-hover-bg;
-                                            border-radius: 13px;
+                                            background: root.enable-emoji ? accent : card-hover-bg;
+                                            border-radius: 12px;
                                             border-width: 1px;
-                                            border-color: root.enable-emoji ? accent-color : border-color;
-
+                                            border-color: root.enable-emoji ? accent : border-color;
                                             Rectangle {
-                                                x: root.enable-emoji ? 26px : 2px;
+                                                x: root.enable-emoji ? 22px : 2px;
                                                 y: 2px;
-                                                width: 20px;
-                                                height: 20px;
-                                                border-radius: 10px;
+                                                width: 18px;
+                                                height: 18px;
+                                                border-radius: 9px;
                                                 background: #ffffff;
                                             }
                                         }
                                     }
                                 }
 
-                                if (root.enable-emoji && root.emoji-has-conflict) : Text {
-                                    text: "⚠️ Shortcut conflict detected with system keybindings";
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: #ef4444;
-                                }
-
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    VerticalLayout {
-                                        spacing: 2px;
-                                        Text {
-                                            text: "Global Shortcut";
-                                            font-size: 13px;
-                                            font-weight: 600;
-                                            color: text-color;
-                                        }
-                                        Text {
-                                            text: "Open emoji and symbol picker grid";
-                                            font-size: 11px;
-                                            color: text-secondary;
-                                        }
+                                    Text {
+                                        text: "Global Shortcut";
+                                        font-size: 11px;
+                                        color: text-muted;
+                                        vertical-alignment: center;
                                     }
-                                    Rectangle {
-                                        background: card-hover-bg;
-                                        border-radius: 4px;
-                                        height: 24px;
-                                        HorizontalLayout {
-                                            padding-left: 8px;
-                                            padding-right: 8px;
-                                            Text {
-                                                text: "Alt + .";
-                                                font-size: 11px;
-                                                font-weight: 700;
-                                                color: accent-color;
-                                                vertical-alignment: center;
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Rectangle {
+                                            background: card-hover-bg;
+                                            border-radius: 4px;
+                                            border-width: 1px;
+                                            border-color: border-color;
+                                            height: 22px;
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                Text {
+                                                    text: "Alt + .";
+                                                    font-size: 11px;
+                                                    font-weight: 700;
+                                                    color: accent;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        if (root.enable-emoji && root.emoji-has-conflict): fix-emoji := TouchArea {
+                                            width: 90px;
+                                            height: 22px;
+                                            clicked => { root.fix-single-shortcut("emoji"); }
+                                            Rectangle {
+                                                background: fix-emoji.has-hover ? #dc2626 : danger-color;
+                                                border-radius: 4px;
+                                                Text {
+                                                    text: "Fix Shortcut";
+                                                    font-size: 10px;
+                                                    font-weight: 700;
+                                                    color: #ffffff;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
                                             }
                                         }
                                     }
                                 }
 
-                                if (root.enable-emoji && root.emoji-has-conflict) : fix-emoji-btn := TouchArea {
-                                    height: 30px;
-                                    clicked => { root.fix-single-shortcut("emoji"); }
-                                    Rectangle {
-                                        background: fix-emoji-btn.has-hover ? #ef4444 : #dc2626;
-                                        border-radius: 6px;
-                                        Text {
-                                            text: "🔧 Fix Shortcut";
-                                            color: #ffffff;
-                                            font-size: 11px;
-                                            font-weight: 600;
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                        }
-                                    }
+                                if (root.enable-emoji && root.emoji-has-conflict): Text {
+                                    text: "Shortcut conflict detected with system keybindings";
+                                    font-size: 11px;
+                                    color: danger-color;
                                 }
                             }
                         }
                     }
 
-                    // SECTION 4: TEXT EXTRACTOR (OCR)
-                    if (root.active-section == 3) : VerticalLayout {
+                    // ═══════════════════════════════
+                    // SECTION 3: TEXT EXTRACTOR
+                    // ═══════════════════════════════
+                    if (root.active-section == 3): VerticalLayout {
                         spacing: 12px;
 
-                        Text {
-                            text: "🔍 Screen Text Extractor (OCR)";
-                            font-size: 15px;
-                            font-weight: 700;
-                            color: text-color;
-                        }
-
                         Rectangle {
-                            background: (root.enable-ocr && root.ocr-has-conflict) ? (is-dark ? #2c1618 : #fef2f2) : card-bg;
+                            background: (root.enable-ocr && root.ocr-has-conflict) ? (is-dark ? #1a0d0d : #fff5f5) : card-bg;
                             border-radius: 8px;
-                            border-width: (root.enable-ocr && root.ocr-has-conflict) ? 2px : 1px;
-                            border-color: (root.enable-ocr && root.ocr-has-conflict) ? #ef4444 : border-color;
+                            border-width: (root.enable-ocr && root.ocr-has-conflict) ? 1.5px : 1px;
+                            border-color: (root.enable-ocr && root.ocr-has-conflict) ? danger-color : border-color;
 
                             VerticalLayout {
-                                padding: 14px;
+                                padding: 16px;
                                 spacing: 12px;
 
                                 HorizontalLayout {
                                     alignment: space-between;
 
                                     VerticalLayout {
-                                        spacing: 3px;
+                                        spacing: 2px;
                                         Text {
-                                            text: "Enable OCR Extractor";
-                                            font-size: 13px;
+                                            text: "Text Extractor (OCR)";
+                                            font-size: 12px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
+
                                         Text {
-                                            text: "Capture text from screen region directly to clipboard";
+                                            text: "Capture text from screen region — shortcut: Alt + Shift + T";
                                             font-size: 11px;
-                                            color: text-secondary;
-                                            wrap: word-wrap;
+                                            color: text-muted;
                                         }
                                     }
 
-                                    TouchArea {
-                                        width: 50px;
-                                        height: 26px;
+                                    toggle-ocr-sw := TouchArea {
+                                        width: 44px;
+                                        height: 24px;
                                         clicked => {
                                             root.enable-ocr = !root.enable-ocr;
                                             root.toggle-ocr(root.enable-ocr);
                                         }
                                         Rectangle {
-                                            background: root.enable-ocr ? accent-color : card-hover-bg;
-                                            border-radius: 13px;
+                                            background: root.enable-ocr ? accent : card-hover-bg;
+                                            border-radius: 12px;
                                             border-width: 1px;
-                                            border-color: root.enable-ocr ? accent-color : border-color;
-
+                                            border-color: root.enable-ocr ? accent : border-color;
                                             Rectangle {
-                                                x: root.enable-ocr ? 26px : 2px;
+                                                x: root.enable-ocr ? 22px : 2px;
                                                 y: 2px;
-                                                width: 20px;
-                                                height: 20px;
-                                                border-radius: 10px;
+                                                width: 18px;
+                                                height: 18px;
+                                                border-radius: 9px;
                                                 background: #ffffff;
                                             }
                                         }
                                     }
                                 }
 
-                                if (root.enable-ocr && root.ocr-has-conflict) : Text {
-                                    text: "⚠️ Shortcut conflict detected with system keybindings";
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: #ef4444;
-                                }
-
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    VerticalLayout {
-                                        spacing: 2px;
-                                        Text {
-                                            text: "Global Shortcut";
-                                            font-size: 12px;
-                                            color: text-color;
-                                        }
-                                        Text {
-                                            text: "Trigger screen region selection for text capture";
-                                            font-size: 11px;
-                                            color: text-secondary;
-                                        }
+                                    Text {
+                                        text: "Global Shortcut";
+                                        font-size: 11px;
+                                        color: text-muted;
+                                        vertical-alignment: center;
                                     }
-                                    Rectangle {
-                                        background: card-hover-bg;
-                                        border-radius: 4px;
-                                        height: 24px;
-                                        HorizontalLayout {
-                                            padding-left: 8px;
-                                            padding-right: 8px;
-                                            Text {
-                                                text: "Alt + Shift + T";
-                                                font-size: 11px;
-                                                font-weight: 700;
-                                                color: accent-color;
-                                                vertical-alignment: center;
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Rectangle {
+                                            background: card-hover-bg;
+                                            border-radius: 4px;
+                                            border-width: 1px;
+                                            border-color: border-color;
+                                            height: 22px;
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                Text {
+                                                    text: "Alt + Shift + T";
+                                                    font-size: 11px;
+                                                    font-weight: 700;
+                                                    color: accent;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        if (root.enable-ocr && root.ocr-has-conflict): fix-ocr := TouchArea {
+                                            width: 90px;
+                                            height: 22px;
+                                            clicked => { root.fix-single-shortcut("ocr"); }
+                                            Rectangle {
+                                                background: fix-ocr.has-hover ? #dc2626 : danger-color;
+                                                border-radius: 4px;
+                                                Text {
+                                                    text: "Fix Shortcut";
+                                                    font-size: 10px;
+                                                    font-weight: 700;
+                                                    color: #ffffff;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
                                             }
                                         }
                                     }
                                 }
 
-                                if (root.enable-ocr && root.ocr-has-conflict) : fix-ocr-btn := TouchArea {
-                                    height: 30px;
-                                    clicked => { root.fix-single-shortcut("ocr"); }
-                                    Rectangle {
-                                        background: fix-ocr-btn.has-hover ? #ef4444 : #dc2626;
-                                        border-radius: 6px;
-                                        Text {
-                                            text: "🔧 Fix Shortcut";
-                                            color: #ffffff;
-                                            font-size: 11px;
-                                            font-weight: 600;
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                        }
-                                    }
+                                if (root.enable-ocr && root.ocr-has-conflict): Text {
+                                    text: "Shortcut conflict detected with system keybindings";
+                                    font-size: 11px;
+                                    color: danger-color;
                                 }
                             }
                         }
