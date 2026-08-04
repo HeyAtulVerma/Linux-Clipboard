@@ -1,14 +1,14 @@
-# 📋 Linux Clipboard (`lincb.ople.in`)
+# 🧩 Ople MagicToys for Linux
 
 <p align="center">
-  <img src="icon.png" width="128" height="128" alt="lincb.ople.in logo" />
+  <img src="icon.png" width="128" height="128" alt="Ople MagicToys logo" />
 </p>
 
-<h3 align="center">A Native Windows 11-Style Clipboard History Manager for Linux</h3>
+<h3 align="center">Native Windows PowerToys &amp; Windows 11 Clipboard History Suite for Linux</h3>
 
 <p align="center">
-  <a href="https://lincb.ople.in"><img src="https://img.shields.io/badge/Website-lincb.ople.in-0078D4?style=for-the-badge&logo=firefox" alt="Website" /></a>
-  <a href="https://github.com/heyatulverma/Linux-Clipboard/releases"><img src="https://img.shields.io/badge/Release-v0.0.1-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
+  <a href="https://magictoys.ople.in"><img src="https://img.shields.io/badge/Website-magictoys.ople.in-0078D4?style=for-the-badge&logo=firefox" alt="Website" /></a>
+  <a href="https://github.com/AtulVermaGithub/Linux-Clipboard/releases"><img src="https://img.shields.io/badge/Release-v0.0.3--beta-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" /></a>
   <img src="https://img.shields.io/badge/Built_With-Rust_%26_Slint-orange?style=for-the-badge&logo=rust" alt="Rust & Slint" />
 </p>
@@ -17,93 +17,116 @@
 
 ## ⚡ Quick One-Line Installation
 
-Install **`lincb.ople.in`** automatically on **any Linux distribution** (Ubuntu, Debian, Arch, Fedora, Mint, Pop!_OS, openSUSE) with a single command:
+Install **MagicToys** automatically on **any Linux distribution** (Ubuntu, Debian, Arch, Fedora, Mint, Pop!_OS, openSUSE) with a single command:
 
 ```bash
-curl -sS https://lincb.ople.in/install.sh | bash
+curl -sS https://magictoys.ople.in/install.sh | bash
 ```
 
-> **Note:** The installer automatically detects your Linux distribution, downloads the matching package (`.deb`, `.pkg.tar.zst`, `.rpm`, or AppImage), sets up system dependencies, configures `uinput` permissions, and creates desktop launchers automatically.
+> **Note:** The installer automatically detects your Linux distribution, downloads the matching pre-built package (`.deb`, `.pkg.tar.zst`, `.rpm`, or `AppImage`), sets up system dependencies (`xclip`, `tesseract-ocr`), configures `uinput` permissions for Wayland, and creates desktop launcher shortcuts automatically.
 
 ---
 
-## ✨ Features
+## ✨ PowerToys Feature Matrix
 
-- 🗂️ **Windows 11 Experience**: Familiar `Super+V` clipboard history overlay and `Super+.` emoji picker.
-- 🦀 **Ultra-Fast & Lightweight**: Built natively with **Rust** and **Slint GUI** — consumes under 25MB RAM with sub-millisecond hotkey response.
-- 🎨 **Modern Design**: Fluent design language, glassmorphism effects, light/dark theme adaptation, search filtering, and pinned clip management.
-- 🖼️ **Rich Content Support**: Stores and previews text snippets, screenshots, formatted code, and emojis.
-- ⚙️ **Wayland & X11 Native**: Built-in support for GNOME, KDE Plasma, XFCE, Hyprland, and custom window managers.
+**Ople MagicToys** brings popular Windows 11 and Windows PowerToys features natively to Linux:
+
+| Feature | Shortcut | Windows Equivalent | Description |
+| :--- | :--- | :--- | :--- |
+| **Clipboard History** | <kbd>Alt</kbd> + <kbd>V</kbd> | `Win + V` | Instant recall of copied text, rich formatted text, and PNG image thumbnail previews with smart de-duplication and SQLite persistence. |
+| **Emoji &amp; Symbol Picker** | <kbd>Alt</kbd> + <kbd>.</kbd> | `Win + .` | Categorized Unicode emoji grid picker with live search and LRU usage frequency tracking. |
+| **Screen Text Extractor (OCR)** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | PowerToys OCR (`Win+Shift+T`) | Drag a box over any screen area to grab text from images, slides, videos, or non-copyable PDFs via Tesseract OCR directly into your clipboard. |
 
 ---
 
-## 📦 Package Installation Options
+## 🎨 Additional Capabilities
 
-If you prefer to download and install pre-built packages manually:
+- 🎨 **6 Curated Accent Colors**: Choose between Ople Orange (`#f97316`), Sapphire Blue (`#3b82f6`), Amethyst Purple (`#8b5cf6`), Emerald Green (`#22c55e`), Rose Red (`#f43f5e`), and Cyan (`#06b6d4`).
+- 🌙 **Dark, Light &amp; System Theme Modes**: Automatic theme detection via DBus notifications. Opaque background architecture guarantees 100% sharp GPU subpixel font antialiasing (FemtoVG/Slint).
+- 📌 **Item Pinning &amp; Organization**: Lock important clips to top of history.
+- ⚡ **Native Wayland &amp; X11 Engine**: Uses Linux `/dev/uinput` virtual keyboard device on Wayland (GNOME, KDE), with XTest and EWMH focus restoration on X11.
+- 🔒 **100% Local &amp; Private**: Zero telemetry, zero tracking, zero network calls. All clips and settings stay local inside `~/.config/magictoys/db.db`.
+
+---
+
+## 📦 Manual Package Installation Options
+
+Download pre-built packages from the [Releases Page](https://github.com/AtulVermaGithub/Linux-Clipboard/releases):
 
 ### 1. Ubuntu / Debian / Pop!_OS / Mint (`.deb`)
 ```bash
-sudo apt install ./lincb.ople.in_0.0.1_amd64.deb
+sudo apt update && sudo apt install -y xclip tesseract-ocr
+sudo dpkg -i magictoys_0.0.3_amd64.deb
 ```
+*(Includes automatic desktop session auto-launch script right after installation).*
 
 ### 2. Arch Linux / Manjaro / EndeavourOS (`.pkg.tar.zst`)
 ```bash
-sudo pacman -U lincb.ople.in-0.0.1-1-x86_64.pkg.tar.zst
+sudo pacman -U magictoys-0.0.3-1-x86_64.pkg.tar.zst
 ```
 
 ### 3. Fedora / RHEL / openSUSE (`.rpm`)
 ```bash
-sudo dnf install ./lincb.ople.in-0.0.1-1.x86_64.rpm
+sudo dnf install ./magictoys-0.0.3-1.x86_64.rpm
 ```
 
-### 4. Portable AppImage (No installation required)
+### 4. Portable AppImage (Universal)
 ```bash
-chmod +x lincb.ople.in-0.0.1-x86_64.AppImage
-./lincb.ople.in-0.0.1-x86_64.AppImage
+chmod +x MagicToys-0.0.3-x86_64.AppImage
+./MagicToys-0.0.3-x86_64.AppImage
 ```
 
 ---
 
-## ⌨️ Keyboard Shortcuts & Usage
+## ⌨️ Keyboard Shortcuts &amp; Navigation
 
 | Shortcut | Action |
-|----------|--------|
-| **`Super + V`** | Toggle Clipboard History modal |
-| **`Super + .`** | Toggle Emoji Picker panel |
-| **`Up / Down`** | Navigate through clip history |
-| **`Enter`** | Paste selected clip into current active window |
+| :--- | :--- |
+| **`Alt + V`** | Toggle Clipboard History modal |
+| **`Alt + .`** | Toggle Emoji Picker panel |
+| **`Alt + Shift + T`** | Run Screen Region Text Extractor (OCR) |
+| **`Up / Down`** | Navigate through clipboard list |
+| **`Enter`** | Paste selected clip directly into current active window |
 | **`Delete`** | Remove selected clip from history |
 
 ---
 
-## 🛠️ Building from Source
+## 🛠️ Building from Source &amp; Releases
 
 ### Prerequisites (Ubuntu/Debian):
 ```bash
-sudo apt update && sudo apt install -y build-essential pkg-config libfontconfig1-dev libx11-dev libxtst-dev libxdo-dev libglib2.0-dev libgtk-3-dev
+sudo apt update && sudo apt install -y \
+    build-essential pkg-config libfontconfig1-dev libx11-dev \
+    libxtst-dev libxdo-dev libglib2.0-dev libgtk-3-dev \
+    tesseract-ocr libtesseract-dev libleptonica-dev xclip
 ```
 
-### Build & Install:
+### Build Binary:
 ```bash
-git clone https://github.com/heyatulverma/Linux-Clipboard.git
+git clone https://github.com/AtulVermaGithub/Linux-Clipboard.git
 cd Linux-Clipboard/work
 cargo build --release
-sudo make install
 ```
+
+### Build All Linux Release Packages (`work/releases/`):
+```bash
+./build-all.sh
+```
+*Generates `.deb`, `.pkg.tar.zst`, `.rpm`, `.AppImage`, `.tar.gz`, and `SHA256SUMS` inside `work/releases/`.*
 
 ---
 
 ## 🗑️ Uninstallation
 
-To remove `lincb.ople.in` from your system:
+To remove **MagicToys** from your system:
 
-- **Ubuntu / Debian**: `sudo apt remove lincb.ople.in`
-- **Arch Linux**: `sudo pacman -R lincb.ople.in`
-- **Fedora / RHEL**: `sudo dnf remove lincb.ople.in`
+- **Ubuntu / Debian**: `sudo apt remove magictoys`
+- **Arch Linux**: `sudo pacman -R magictoys`
+- **Fedora / RHEL**: `sudo dnf remove magictoys`
 
 ---
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
-Created with ❤️ by **[ople.in](https://lincb.ople.in)**.
+This project is licensed under the [MIT License](LICENSE).  
+Created by **[Ople](https://ople.in)** — Official Homepage: **[magictoys.ople.in](https://magictoys.ople.in)**.
