@@ -3,7 +3,7 @@
 # magictoys.ople.in - One-Line Universal Installer Script
 # Usage: curl -sS https://magictoys.ople.in/install.sh | bash
 # Homepage: https://magictoys.ople.in
-# GitHub:   https://github.com/AtulVermaGithub/Linux-Clipboard
+# GitHub:   https://github.com/HeyAtulVerma/Linux-Clipboard
 # =============================================================================
 
 set -e
@@ -11,7 +11,7 @@ set -e
 DEFAULT_VERSION="0.0.3"
 APP_NAME="magictoys"
 PKG_NAME="magictoys"
-GITHUB_REPO="AtulVermaGithub/Linux-Clipboard"
+GITHUB_REPO="HeyAtulVerma/Linux-Clipboard"
 
 # Styling & Colors
 CYAN='\033[0;36m'
