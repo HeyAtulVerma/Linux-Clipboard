@@ -22,7 +22,7 @@ export component HistoryCard inherits TouchArea {
     callback toggle-pin(string);
     callback delete-item(string);
 
-    height: 70px;
+    height: 72px;
     clicked => { paste-item(item.id); }
 
     Rectangle {
@@ -33,8 +33,11 @@ export component HistoryCard inherits TouchArea {
         border-color: is-selected ? accent-color : border-color;
         
         HorizontalLayout {
-            padding: 8px;
-            spacing: 8px;
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 10px;
             
             if (item.item_type == "Image") : Image {
                 source: item.image;
@@ -44,20 +47,22 @@ export component HistoryCard inherits TouchArea {
             }
             
             VerticalLayout {
+                horizontal-stretch: 1;
                 alignment: center;
+                spacing: 4px;
                 
-                // Preview text/snippet content
+                // Crisp high-resolution preview text
                 Text {
                     text: item.preview;
-                    font-size: 13px;
+                    font-size: 15px;
+                    font-weight: 500;
                     color: text-color;
                     overflow: elide;
-                    max-height: 34px;
                 }
 
                 Text {
                     text: item.timestamp_str;
-                    font-size: 10px;
+                    font-size: 13px;
                     color: text-secondary;
                 }
             }
@@ -68,16 +73,16 @@ export component HistoryCard inherits TouchArea {
                 HorizontalLayout {
                     alignment: end;
                     spacing: 6px;
-                    width: 50px;
+                    width: 52px;
                     
                     // Pin Button
                     TouchArea {
-                        width: 20px;
-                        height: 20px;
+                        width: 22px;
+                        height: 22px;
                         clicked => { toggle-pin(item.id); }
                         Text {
                             text: item.pinned ? "📌" : "📍";
-                            font-size: 12px;
+                            font-size: 14px;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
@@ -85,18 +90,20 @@ export component HistoryCard inherits TouchArea {
 
                     // Delete Button
                     TouchArea {
-                        width: 20px;
-                        height: 20px;
+                        width: 22px;
+                        height: 22px;
                         clicked => { delete-item(item.id); }
                         Text {
-                            text: "❌";
-                            font-size: 10px;
+                            text: "✕";
+                            font-size: 13px;
+                            color: text-secondary;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
                     }
                 }
             }
+
         }
     }
 }

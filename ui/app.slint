@@ -1,63 +1,76 @@
-// linux-clipboard Slint UI file
-// Implements the layout, visual styling, tabs, search, and action callbacks.
+// MagicToys — Clipboard/Emoji Drawer Window
+// Compact floating panel with Ople brand palette.
 
 import { ScrollView } from "std-widgets.slint";
 
 import { SlintClipItem, SlintEmojiItem, SlintEmojiRow } from "./types.slint";
 import { HistoryCard } from "./history_card.slint";
-import { SetupView } from "./setup_view.slint";
 import { EmojiPanel } from "./emoji_panel.slint";
-import { PreferencesPanel } from "./preferences_panel.slint";
+import { MainWindow } from "./main_window.slint";
+
+export { MainWindow }
 
 export component AppWindow inherits Window {
-    // Window properties
-    title: "Clipboard History";
+    title: "MagicToys";
+
+
     width: 360px;
     height: 480px;
     always-on-top: true;
-    background: transparent;
+    background: bg-color;
     no-frame: true;
 
-    // Callbacks to Rust backend
-    callback paste-item(string);         // item ID
-    callback delete-item(string);        // item ID
-    callback toggle-pin(string);         // item ID
-    callback clear-history();
-    callback record-emoji(string);       // emoji char
-    callback search-changed(string);     // search text
-    callback emoji-category-changed(int); // category index
-    callback change-theme(string);
-    callback close-window();
-    callback check-shortcuts();
-    callback fix-shortcuts();
-    callback finish-setup();
 
-    // Data models populated by Rust
+    // Callbacks to Rust backend
+    callback paste-item(string);
+    callback delete-item(string);
+    callback toggle-pin(string);
+    callback clear-history();
+    callback record-emoji(string);
+    callback search-changed(string);
+    callback emoji-category-changed(int);
+    callback change-theme(string);
+    callback toggle-clipboard(bool);
+    callback toggle-emoji(bool);
+    callback toggle-ocr(bool);
+    callback open-preferences();
+    callback close-window();
+    callback fix-single-shortcut(string);
+
+    // Data models
     in-out property <[SlintClipItem]> clips: [];
     in-out property <[SlintEmojiRow]> emoji_rows: [];
     in-out property <int> selected_index: 0;
-    in-out property <int> active-tab: 0; // 0 = Clips, 1 = Emojis, 2 = GIFs/Kaomojis
-    in-out property <int> active-emoji-category: 0; // 0-8 for emoji categories
+    in-out property <int> active-tab: 0;
+    in-out property <int> active-emoji-category: 0;
     in-out property <bool> is-dark: true;
-    in-out property <bool> show-setup: false;
-    in-out property <int> setup-step: 0; // 0 = Welcome, 1 = Detect/Conflict, 2 = Manual Setup
-    in-out property <string> shortcut-status: "detecting"; // "detecting", "conflict", "ok", "failed"
-    in-out property <string> shortcut-details: "";
+    in-out property <bool> enable-clipboard: false;
+    in-out property <bool> enable-emoji: false;
+    in-out property <bool> enable-ocr: false;
+
     in-out property <string> search-placeholder: "Search clipboard...";
     in-out property <string> search-text: "";
     in-out property <string> theme-mode: "system";
+    in-out property <string> accent-hex: "#f97316";
 
+    // Design tokens — matches MagicToys palette
+    property <color> bg-color:      is-dark ? #0f0f0f : #f5f5f5;
+    property <color> border-color:  is-dark ? #1f1f1f : #e0e0e0;
+    property <color> text-color:    is-dark ? #f5f5f5 : #111111;
+    property <color> text-secondary: is-dark ? #737373 : #737373;
+    property <color> card-bg:       is-dark ? #161616 : #ffffff;
+    property <color> card-hover-bg: is-dark ? #1e1e1e : #f0f0f0;
+    property <color> pinned-color:  is-dark ? #f97316 : #ea580c;
+    property <color> pinned-bg:     is-dark ? rgba(249, 115, 22, 0.08) : rgba(249, 115, 22, 0.06);
 
-    // Dynamic coloring tokens
-    property <color> bg-color: is-dark ? #202020 : #f3f3f3;
-    property <color> border-color: is-dark ? #303030 : #e0e0e0;
-    property <color> text-color: is-dark ? #ffffff : #1c1c1c;
-    property <color> text-secondary: is-dark ? #aaaaaa : #666666;
-    property <color> accent-color: #0078d4; // Windows Blue accent
-    property <color> card-bg: is-dark ? #2d2d2d : #ffffff;
-    property <color> card-hover-bg: is-dark ? #3d3d3d : #f9f9f9;
-    property <color> pinned-color: is-dark ? #ffb900 : #d83b01;
-    property <color> pinned-bg: is-dark ? rgba(255, 185, 0, 0.08) : rgba(216, 59, 1, 0.06);
+    // Accent — resolved from stored hex
+    property <color> accent: accent-hex == "#f97316" ? #f97316
+                           : accent-hex == "#3b82f6" ? #3b82f6
+                           : accent-hex == "#8b5cf6" ? #8b5cf6
+                           : accent-hex == "#22c55e" ? #22c55e
+                           : accent-hex == "#f43f5e" ? #f43f5e
+                           : accent-hex == "#06b6d4" ? #06b6d4
+                           : #f97316;
 
     in-out property <length> scroll-y: 0px;
 
@@ -68,7 +81,7 @@ export component AppWindow inherits Window {
         let item-bottom: length = item-top + 70px;
         let view-top = -scroll-y;
         let view-bottom = -scroll-y + 330px;
-        
+
         if (item-top < view-top) {
             scroll-y = -item-top;
         } else if (item-bottom > view-bottom) {
@@ -90,183 +103,97 @@ export component AppWindow inherits Window {
         root.search-changed("");
     }
 
-    // Main layout container with rounded border
     FocusScope {
         width: 100%;
         height: 100%;
-        
+
         Rectangle {
             width: 100%;
             height: 100%;
             background: bg-color;
-            border-radius: 12px;
+            border-radius: 10px;
             border-width: 1px;
             border-color: border-color;
             clip: true;
 
-            if (show-setup) : SetupView {
-                setup-step <=> root.setup-step;
-                shortcut-status <=> root.shortcut-status;
-                shortcut-details <=> root.shortcut-details;
-                text-color: root.text-color;
-                text-secondary: root.text-secondary;
-                accent-color: root.accent-color;
-                card-bg: root.card-bg;
-                border-color: root.border-color;
-                
-                check-shortcuts() => { root.check-shortcuts(); }
-                fix-shortcuts() => { root.fix-shortcuts(); }
-                finish-setup() => { root.finish-setup(); }
-            }
-
-            if (!show-setup) : VerticalLayout {
-                padding: 12px;
+            VerticalLayout {
+                padding: 10px;
                 spacing: 8px;
 
-                // Header section
+                // ── Header ──────────────────────────────────
                 HorizontalLayout {
                     z: 10;
                     alignment: space-between;
-                    
-                    Text {
-                        text: "Clipboard";
-                        font-size: 16px;
-                        font-weight: 700;
-                        color: text-color;
-                        vertical-alignment: center;
-                    }
-                    
+
                     HorizontalLayout {
                         spacing: 8px;
-                        
-                        // Clear All button
+                        alignment: center;
+
+                        Image {
+                            source: @image-url("../icon.png");
+                            width: 28px;
+                            height: 28px;
+                        }
+
+                        Text {
+                            text: "MagicToys";
+                            font-size: 16px;
+                            font-weight: 700;
+                            color: text-color;
+                            vertical-alignment: center;
+                        }
+                    }
+
+
+                    HorizontalLayout {
+                        spacing: 6px;
+
+                        // Clear all
                         clear-all-btn := TouchArea {
-                            width: 24px;
-                            height: 24px;
+                            width: 26px;
+                            height: 26px;
                             clicked => { root.clear-history(); }
-                            
                             Rectangle {
-                                background: clear-all-btn.has-hover ? card-hover-bg : transparent;
-                                border-radius: 4px;
-                                
-                                // Custom Vector-drawn Red Trashcan Icon
-                                Rectangle {
-                                    width: 12px;
-                                    height: 14px;
-                                    
-                                    VerticalLayout {
-                                        spacing: 1px;
-                                        alignment: center;
-                                        
-                                        // Lid handle
-                                        Rectangle {
-                                            width: 4px;
-                                            height: 1.5px;
-                                            background: #ff3b30;
-                                            border-radius: 0.5px;
-                                        }
-                                        
-                                        // Lid
-                                        Rectangle {
-                                            width: 12px;
-                                            height: 1.5px;
-                                            background: #ff3b30;
-                                            border-radius: 0.5px;
-                                        }
-                                        
-                                        // Can body
-                                        Rectangle {
-                                            width: 10px;
-                                            height: 9px;
-                                            border-width: 1.2px;
-                                            border-color: #ff3b30;
-                                            border-radius: 1px;
-                                            
-                                            // Ribs
-                                            HorizontalLayout {
-                                                alignment: space-around;
-                                                padding-left: 1.5px;
-                                                padding-right: 1.5px;
-                                                Rectangle { width: 1px; height: 5px; background: #ff3b30; }
-                                                Rectangle { width: 1px; height: 5px; background: #ff3b30; }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if (clear-all-btn.has-hover) : Rectangle {
-                                x: -80px;
-                                y: 28px;
-                                width: 96px;
-                                height: 20px;
-                                background: card-bg;
-                                border-radius: 4px;
-                                border-width: 1px;
-                                border-color: border-color;
-                                z: 100;
-                                
+                                background: clear-all-btn.has-hover ? rgba(239, 68, 68, 0.12) : transparent;
+                                border-radius: 5px;
                                 Text {
-                                    text: "Clear clipboard";
-                                    font-size: 10px;
-                                    color: text-color;
+                                    text: "🗑";
+                                    font-size: 15px;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
                             }
                         }
 
-                        // Preferences Button
+                        // Preferences
                         pref-btn := TouchArea {
-                            width: 24px;
-                            height: 24px;
-                            clicked => { active-tab = 2; }
-                            
+                            width: 26px;
+                            height: 26px;
+                            clicked => { root.open-preferences(); }
                             Rectangle {
                                 background: pref-btn.has-hover ? card-hover-bg : transparent;
-                                border-radius: 4px;
+                                border-radius: 5px;
                                 Text {
-                                    text: "☰";
-                                    font-size: 13px;
+                                    text: "⚙";
+                                    font-size: 16px;
                                     color: text-secondary;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
                             }
-                            
-                            if (pref-btn.has-hover) : Rectangle {
-                                x: -60px;
-                                y: 28px;
-                                width: 80px;
-                                height: 20px;
-                                background: card-bg;
-                                border-radius: 4px;
-                                border-width: 1px;
-                                border-color: border-color;
-                                z: 100;
-                                
-                                Text {
-                                    text: "Preferences";
-                                    font-size: 10px;
-                                    color: text-color;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                            }
                         }
 
-                        // Close button
+                        // Close
                         close-btn := TouchArea {
-                            width: 24px;
-                            height: 24px;
+                            width: 26px;
+                            height: 26px;
                             clicked => { root.close-window(); }
-                            
                             Rectangle {
                                 background: close-btn.has-hover ? #e81123 : transparent;
-                                border-radius: 4px;
+                                border-radius: 5px;
                                 Text {
                                     text: "✕";
-                                    font-size: 12px;
+                                    font-size: 14px;
                                     color: close-btn.has-hover ? #ffffff : text-secondary;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
@@ -276,12 +203,12 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                              HorizontalLayout {
-                    height: 36px;
+                // ── Tab Bar ─────────────────────────────────
+                HorizontalLayout {
+                    height: 34px;
                     spacing: 4px;
-                    
-                    // Tab 1: Clipboard
-                    TouchArea {
+
+                    if (enable-clipboard) : TouchArea {
                         clicked => {
                             active-tab = 0;
                             search-placeholder = "Search history...";
@@ -292,19 +219,19 @@ export component AppWindow inherits Window {
                             background: active-tab == 0 ? card-bg : (parent.has-hover ? card-hover-bg : bg-color);
                             border-radius: 6px;
                             border-width: 1px;
-                            border-color: active-tab == 0 ? accent-color : border-color;
+                            border-color: active-tab == 0 ? accent : border-color;
                             Text {
-                                text: "🕒 History";
+                                text: "History";
+                                font-size: 13px;
                                 font-weight: 600;
-                                color: active-tab == 0 ? accent-color : text-secondary;
+                                color: active-tab == 0 ? accent : text-secondary;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
                         }
                     }
 
-                    // Tab 2: Emojis
-                    TouchArea {
+                    if (enable-emoji) : TouchArea {
                         clicked => {
                             active-tab = 1;
                             search-placeholder = "Search emojis...";
@@ -317,11 +244,12 @@ export component AppWindow inherits Window {
                             background: active-tab == 1 ? card-bg : (parent.has-hover ? card-hover-bg : bg-color);
                             border-radius: 6px;
                             border-width: 1px;
-                            border-color: active-tab == 1 ? accent-color : border-color;
+                            border-color: active-tab == 1 ? accent : border-color;
                             Text {
-                                text: "😊 Emojis";
+                                text: "Emoji";
+                                font-size: 13px;
                                 font-weight: 600;
-                                color: active-tab == 1 ? accent-color : text-secondary;
+                                color: active-tab == 1 ? accent : text-secondary;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
@@ -329,32 +257,30 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Search Bar Container
-                if (active-tab != 2) : Rectangle {
+                // ── Search Bar ──────────────────────────────
+                Rectangle {
                     height: 36px;
                     background: card-bg;
-                    border-radius: 8px;
+                    border-radius: 7px;
                     border-width: 1px;
                     border-color: border-color;
-                    
+
                     HorizontalLayout {
                         padding-left: 10px;
                         padding-right: 10px;
                         alignment: stretch;
-                        
+
                         search-input := TextInput {
                             text <=> root.search-text;
-                            font-size: 13px;
+                            font-size: 14px;
                             color: text-color;
                             single-line: true;
                             vertical-alignment: center;
-                            
+
                             init => { self.focus(); }
-                            
-                            // Connect input edits back to search filter
+
                             edited => { root.search-changed(self.text); }
-                            
-                            // Intercept arrow keys and enter
+
                             key-pressed(event) => {
                                 if (event.text == Key.DownArrow) {
                                     root.selected_index = Math.min(root.selected_index + 1, root.clips.length - 1);
@@ -372,97 +298,142 @@ export component AppWindow inherits Window {
                                 }
                                 reject
                             }
-                            
-                            // Placeholder Text
+
                             if (self.text == "") : Text {
                                 text: search-placeholder;
-                                font-size: 13px;
+                                font-size: 14px;
                                 color: text-secondary;
                                 vertical-alignment: center;
                             }
                         }
                     }
                 }
- 
-                 // Main tab layouts viewport
-                 if (active-tab == 0) : ScrollView {
-                     viewport-y <=> root.scroll-y;
-                     
-                     VerticalLayout {
-                         alignment: start;
-                         spacing: 6px;
-                         padding-right: 4px;
-                         
-                         for clip[idx] in clips : VerticalLayout {
-                             spacing: 4px;
-                             
-                             if (idx == 0 && clip.pinned) : HorizontalLayout {
-                                 padding-left: 6px;
-                                 padding-top: 2px;
-                                 padding-bottom: 2px;
-                                 Text {
-                                     text: "📌 Pinned";
-                                     font-size: 11px;
-                                     font-weight: 700;
-                                     color: pinned-color;
-                                 }
-                             }
-                             
-                             if (!clip.pinned && (idx == 0 || root.clips[idx - 1].pinned)) : HorizontalLayout {
-                                 padding-left: 6px;
-                                 padding-top: 6px;
-                                 padding-bottom: 2px;
-                                 Text {
-                                     text: "📋 Recent";
-                                     font-size: 11px;
-                                     font-weight: 700;
-                                     color: text-secondary;
-                                 }
-                             }
 
-                             HistoryCard {
-                                 item: clip;
-                                 is-selected: root.selected_index == idx;
-                                 bg-color: root.bg-color;
-                                 border-color: root.border-color;
-                                 text-color: root.text-color;
-                                 text-secondary: root.text-secondary;
-                                 accent-color: root.accent-color;
-                                 card-bg: root.card-bg;
-                                 card-hover-bg: root.card-hover-bg;
-                                 pinned-bg: root.pinned-bg;
-                                 
-                                 paste-item(id) => { root.paste-item(id); }
-                                 toggle-pin(id) => { root.toggle-pin(id); }
-                                 delete-item(id) => { root.delete-item(id); }
-                             }
-                         }
-                     }
-                 }
-                 if (active-tab == 1) : EmojiPanel {
-                     active-emoji-category <=> root.active-emoji-category;
-                     emoji-rows: root.emoji-rows;
-                     card-bg: root.card-bg;
-                     card-hover-bg: root.card-hover-bg;
-                     border-color: root.border-color;
-                     accent-color: root.accent-color;
-                     
-                     emoji-category-changed(cat) => { root.emoji-category-changed(cat); }
-                     record-emoji(emoji) => { root.record-emoji(emoji); }
-                 }
+                // ── Clipboard History ────────────────────────
+                if (active-tab == 0 && enable-clipboard) : ScrollView {
+                    viewport-y <=> root.scroll-y;
 
-                 if (active-tab == 2) : PreferencesPanel {
-                     theme-mode <=> root.theme-mode;
-                     text-color: root.text-color;
-                     text-secondary: root.text-secondary;
-                     card-bg: root.card-bg;
-                     card-hover-bg: root.card-hover-bg;
-                     border-color: root.border-color;
-                     accent-color: root.accent-color;
-                     
-                     change-theme(theme) => { root.change-theme(theme); }
-                 }
-             }
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 5px;
+                        padding-right: 4px;
+                        padding-bottom: 8px;
+
+                        if (clips.length == 0) : VerticalLayout {
+                            alignment: center;
+                            spacing: 8px;
+                            height: 200px;
+                            Text {
+                                text: "📋";
+                                font-size: 32px;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: "Clipboard history is empty";
+                                font-size: 14px;
+                                font-weight: 600;
+
+                                color: root.text-secondary;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        for clip[idx] in clips : VerticalLayout {
+                            spacing: 3px;
+
+                            if (idx == 0 && clip.pinned) : HorizontalLayout {
+                                padding-left: 4px;
+                                padding-top: 2px;
+                                Text {
+                                    text: "Pinned";
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: pinned-color;
+                                }
+                            }
+
+                            if (!clip.pinned && (idx == 0 || root.clips[idx - 1].pinned)) : HorizontalLayout {
+                                padding-left: 4px;
+                                padding-top: 4px;
+                                Text {
+                                    text: "Recent";
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: text-secondary;
+                                }
+                            }
+
+                            HistoryCard {
+                                item: clip;
+                                is-selected: root.selected_index == idx;
+                                bg-color: root.bg-color;
+                                border-color: root.border-color;
+                                text-color: root.text-color;
+                                text-secondary: root.text-secondary;
+                                accent-color: root.accent;
+                                card-bg: root.card-bg;
+                                card-hover-bg: root.card-hover-bg;
+                                pinned-bg: root.pinned-bg;
+
+                                paste-item(id) => { root.paste-item(id); }
+                                toggle-pin(id) => { root.toggle-pin(id); }
+                                delete-item(id) => { root.delete-item(id); }
+                            }
+                        }
+                    }
+                }
+
+                // ── Emoji Panel ──────────────────────────────
+                if (active-tab == 1 && enable-emoji) : EmojiPanel {
+                    active-emoji-category <=> root.active-emoji-category;
+                    emoji-rows: root.emoji-rows;
+                    card-bg: root.card-bg;
+                    card-hover-bg: root.card-hover-bg;
+                    border-color: root.border-color;
+                    accent-color: root.accent;
+
+                    emoji-category-changed(cat) => { root.emoji-category-changed(cat); }
+                    record-emoji(emoji) => { root.record-emoji(emoji); }
+                }
+
+                // ── Tools disabled fallback ──────────────────
+                if (!enable-clipboard && !enable-emoji) : VerticalLayout {
+                    alignment: center;
+                    spacing: 10px;
+                    height: 200px;
+
+                    Text {
+                        text: "Tools Disabled";
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: root.text-color;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Enable tools in MagicToys settings";
+                        font-size: 11px;
+                        color: root.text-secondary;
+                        horizontal-alignment: center;
+                    }
+                    open-pref := TouchArea {
+                        width: 120px;
+                        height: 30px;
+                        clicked => { root.open-preferences(); }
+                        Rectangle {
+                            background: open-pref.has-hover ? card-hover-bg : accent;
+                            border-radius: 6px;
+                            Text {
+                                text: "Open Settings";
+                                color: open-pref.has-hover ? text-color : #ffffff;
+                                font-size: 11px;
+                                font-weight: 600;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

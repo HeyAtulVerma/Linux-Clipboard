@@ -1,12 +1,12 @@
-# Linux Clipboard History — robots.txt
-# https://lincb.ople.in/
+# Ople MagicToys for Linux — robots.txt
+# https://magictoys.ople.in/
 
 # Allow all crawlers full access
 User-agent: *
 Allow: /
 
-# Block access to raw install script from indexing (still accessible, just not indexed)
+# Block access to raw install script from indexing
 Disallow: /install.sh
 
 # Sitemap location — submit this URL to Google Search Console
-Sitemap: https://lincb.ople.in/sitemap.xml
+Sitemap: https://magictoys.ople.in/sitemap.xml

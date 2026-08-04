@@ -1,17 +1,17 @@
 #!/bin/bash
 # =============================================================================
-# lincb.ople.in - One-Line Universal Installer Script
-# Usage: curl -sS https://lincb.ople.in/install.sh | bash
-# Homepage: https://lincb.ople.in
-# GitHub:   https://github.com/AtulVermaGithub/Linux-Clipboard
+# magictoys.ople.in - One-Line Universal Installer Script
+# Usage: curl -sS https://magictoys.ople.in/install.sh | bash
+# Homepage: https://magictoys.ople.in
+# GitHub:   https://github.com/HeyAtulVerma/Linux-Clipboard
 # =============================================================================
 
 set -e
 
-DEFAULT_VERSION="0.0.2"
-APP_NAME="lincb.ople.in"
-PKG_NAME="lincb.ople.in"
-GITHUB_REPO="AtulVermaGithub/Linux-Clipboard"
+DEFAULT_VERSION="0.0.3"
+APP_NAME="magictoys"
+PKG_NAME="magictoys"
+GITHUB_REPO="HeyAtulVerma/Linux-Clipboard"
 
 # Styling & Colors
 CYAN='\033[0;36m'
@@ -24,8 +24,8 @@ RESET='\033[0m'
 print_banner() {
     echo -e "${CYAN}"
     echo '  ╔══════════════════════════════════════════════════════════════════╗'
-    echo '  ║                     Linux-Clipboard Installer                    ║'
-    echo '  ║       Native Windows 11-style Clipboard History for Linux        ║'
+    echo '  ║                       MagicToys Installer                        ║'
+    echo '  ║   Native Windows PowerToys & Clipboard History for Linux         ║'
     echo '  ║                           by Ople.in                             ║'
     echo '  ╚══════════════════════════════════════════════════════════════════╝'
     echo -e "${RESET}"

@@ -50,9 +50,11 @@ pub fn setup_tray() -> Result<TrayIcon, Box<dyn std::error::Error>> {
 
     let tray_icon = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip("lincb.ople.in")
+        .with_tooltip("MagicToys")
+
         .with_icon(icon)
         .build()?;
+
 
     Ok(tray_icon)
 }

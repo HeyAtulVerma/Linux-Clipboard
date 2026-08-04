@@ -1,5 +1,5 @@
 //! User Settings and Configuration Module
-//! Handles persistence of user preferences in ~/.config/linux-clipboard/settings.json
+//! Handles persistence of user preferences in ~/.config/lincb.ople.in/settings.json
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -8,23 +8,34 @@ use std::path::PathBuf;
 const USER_SETTINGS_FILE: &str = "settings.json";
 pub const DEFAULT_MAX_HISTORY_SIZE: usize = 50;
 
+fn default_false() -> bool {
+    false
+}
+
+fn default_accent() -> String {
+    "#f97316".to_string() // Ople orange
+}
+
 /// User-configurable settings for the application
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSettings {
     /// Theme mode: "system", "dark", or "light"
     pub theme_mode: String,
-    /// Background opacity for dark mode (0.0 to 1.0)
-    pub dark_background_opacity: f32,
-    /// Background opacity for light mode (0.0 to 1.0)
-    pub light_background_opacity: f32,
 
-    // --- Feature Flags ---
-    /// Enable Dynamic Tray Icon (changes color based on system theme)
-    pub enable_dynamic_tray_icon: bool,
-    /// Enable Smart Actions (URL, Color, Email detection)
-    pub enable_smart_actions: bool,
-    /// Enable UI Polish
-    pub enable_ui_polish: bool,
+    /// Accent color hex (one of the 6 MagicToys swatches)
+    #[serde(default = "default_accent")]
+    pub accent_color: String,
+
+    // --- Feature Flags (default to false per user requirement) ---
+    /// Enable Clipboard History tool (Alt + V)
+    #[serde(default = "default_false")]
+    pub enable_clipboard_feature: bool,
+    /// Enable Emoji Picker tool (Alt + .)
+    #[serde(default = "default_false")]
+    pub enable_emoji_feature: bool,
+    /// Enable Screen OCR Text Extractor (Alt + Shift + T)
+    #[serde(default = "default_false")]
+    pub enable_ocr_feature: bool,
 
     // --- History Settings ---
     /// Maximum number of clipboard history items to keep (1 to 100000)
@@ -33,57 +44,51 @@ pub struct UserSettings {
     pub auto_delete_interval: u64,
     /// Auto-delete interval unit ("minutes", "hours", "days", "weeks")
     pub auto_delete_unit: String,
-
-    // --- UI Scale ---
-    /// UI scale factor for the clipboard window (0.5 to 2.0, default 1.0)
-    pub ui_scale: f32,
 }
 
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
             theme_mode: "system".to_string(),
-            dark_background_opacity: 0.70,
-            light_background_opacity: 0.70,
-            enable_dynamic_tray_icon: true,
-            enable_smart_actions: true,
-            enable_ui_polish: true,
+            accent_color: default_accent(),
+            enable_clipboard_feature: false,
+            enable_emoji_feature: false,
+            enable_ocr_feature: false,
             max_history_size: DEFAULT_MAX_HISTORY_SIZE,
             auto_delete_interval: 0,
             auto_delete_unit: "hours".to_string(),
-            ui_scale: 1.0,
         }
     }
 }
 
 impl UserSettings {
+    /// Returns auto-delete interval converted to minutes (0 = disabled)
     pub fn auto_delete_interval_in_minutes(&self) -> u64 {
         if self.auto_delete_interval == 0 {
             return 0;
         }
-
         let base = self.auto_delete_interval;
-
         match self.auto_delete_unit.as_str() {
             "minutes" => base,
-            "hours" => base.saturating_mul(60),
-            "days" => base.saturating_mul(60).saturating_mul(24),
-            "weeks" => base.saturating_mul(60).saturating_mul(24).saturating_mul(7),
-            _ => 0,
+            "hours"   => base.saturating_mul(60),
+            "days"    => base.saturating_mul(60).saturating_mul(24),
+            "weeks"   => base.saturating_mul(60).saturating_mul(24).saturating_mul(7),
+            _         => 0,
         }
     }
 
-    /// Validates and clamps setting fields
+    /// Validates and clamps setting fields to acceptable ranges
     pub fn validate(&mut self) {
-        self.dark_background_opacity = self.dark_background_opacity.clamp(0.0, 1.0);
-        self.light_background_opacity = self.light_background_opacity.clamp(0.0, 1.0);
-
         if !["system", "dark", "light"].contains(&self.theme_mode.as_str()) {
             self.theme_mode = "system".to_string();
         }
 
+        let valid_accents = ["#f97316", "#3b82f6", "#8b5cf6", "#22c55e", "#f43f5e", "#06b6d4"];
+        if !valid_accents.contains(&self.accent_color.as_str()) {
+            self.accent_color = default_accent();
+        }
+
         self.max_history_size = self.max_history_size.clamp(1, 100_000);
-        self.ui_scale = self.ui_scale.clamp(0.5, 2.0);
 
         if !["minutes", "hours", "days", "weeks"].contains(&self.auto_delete_unit.as_str()) {
             self.auto_delete_unit = "hours".to_string();
@@ -97,7 +102,7 @@ pub struct UserSettingsManager {
 }
 
 impl UserSettingsManager {
-    /// Creates a new UserSettingsManager using ~/.config/linux-clipboard
+    /// Creates a new manager using ~/.config/lincb.ople.in/
     pub fn new() -> Self {
         let config_dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -106,12 +111,11 @@ impl UserSettingsManager {
         Self { config_dir }
     }
 
-    /// Gets the path to the settings file
     fn settings_path(&self) -> PathBuf {
         self.config_dir.join(USER_SETTINGS_FILE)
     }
 
-    /// Loads user settings from the config file
+    /// Loads settings from disk, falling back to defaults on any error
     pub fn load(&self) -> UserSettings {
         let path = self.settings_path();
 
@@ -126,29 +130,28 @@ impl UserSettingsManager {
                     settings
                 }
                 Err(e) => {
-                    eprintln!("[Config] Failed to parse settings file: {}. Using defaults.", e);
+                    eprintln!("[Config] Failed to parse settings: {}. Using defaults.", e);
                     UserSettings::default()
                 }
             },
             Err(e) => {
-                eprintln!("[Config] Failed to read settings file: {}. Using defaults.", e);
+                eprintln!("[Config] Failed to read settings: {}. Using defaults.", e);
                 UserSettings::default()
             }
         }
     }
 
-    /// Saves user settings to the config file
-    #[allow(dead_code)]
+    /// Saves settings to disk
     pub fn save(&self, settings: &UserSettings) -> Result<(), String> {
         if !self.config_dir.exists() {
             fs::create_dir_all(&self.config_dir)
                 .map_err(|e| format!("Failed to create config directory: {}", e))?;
         }
 
-        let mut validated_settings = settings.clone();
-        validated_settings.validate();
+        let mut validated = settings.clone();
+        validated.validate();
 
-        let content = serde_json::to_string_pretty(&validated_settings)
+        let content = serde_json::to_string_pretty(&validated)
             .map_err(|e| format!("Failed to serialize settings: {}", e))?;
 
         fs::write(self.settings_path(), content)
