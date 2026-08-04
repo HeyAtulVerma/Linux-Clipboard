@@ -21,7 +21,7 @@ use backend::theme::is_system_dark_mode;
 use backend::ipc::{handle_single_instance, spawn_ipc_listener};
 use ui::helpers::{refresh_clips, refresh_emojis};
 
-const APP_NAME: &str = "lincb.ople.in";
+const APP_NAME: &str = "magictoys";
 
 /// Helper to resolve configurations directory
 fn get_config_dir() -> PathBuf {
@@ -73,6 +73,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up database
     let db_path = config_dir.join("db.db");
     let conn = Arc::new(Mutex::new(backend::db::init_db(&db_path)?));
+
+    // Ensure ~/.local/bin/magictoys symlink exists for DE hotkeys
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(home) = dirs::home_dir() {
+            let local_bin = home.join(".local").join("bin");
+            let _ = fs::create_dir_all(&local_bin);
+            for name in &["magictoys", "lincb.ople.in"] {
+                let symlink_path = local_bin.join(name);
+                if !symlink_path.exists() || fs::read_link(&symlink_path).map(|p| p != exe_path).unwrap_or(true) {
+                    let _ = fs::remove_file(&symlink_path);
+                    #[cfg(unix)]
+                    let _ = std::os::unix::fs::symlink(&exe_path, &symlink_path);
+                }
+            }
+        }
+    }
+
 
     // Check if first-run setup is complete
     let setup_path = config_dir.join("setup_done");
@@ -127,7 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut current_applied_dark = initial_is_dark;
 
         loop {
-            std::thread::sleep(Duration::from_millis(500));
+            std::thread::sleep(Duration::from_millis(750));
             clean_counter += 1;
             theme_check_counter += 1;
 
@@ -171,7 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Completely pause/skip clipboard polling when Clipboard History tool is disabled
             if !settings.enable_clipboard_feature {
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::sleep(Duration::from_millis(750));
                 continue;
             }
 
@@ -274,12 +291,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Show initial window based on CLI flags
     if args.contains(&"--toggle".to_string()) {
         if settings.enable_clipboard_feature {
+            backend::simulator::save_focused_window();
             app.set_active_tab(0);
             app.set_search_placeholder("Search history...".into());
             let _ = app.window().show();
         }
     } else if args.contains(&"--emoji".to_string()) {
         if settings.enable_emoji_feature {
+            backend::simulator::save_focused_window();
             app.set_active_tab(1);
             app.set_search_placeholder("Search emojis...".into());
             let _ = app.window().show();
@@ -446,25 +465,28 @@ fn setup_callbacks(
 
         // Spawn background thread for paste
         std::thread::spawn(move || {
-            // Wait for the window to actually hide
+            // Wait for the window to actually hide and compositor to process it
             std::thread::sleep(std::time::Duration::from_millis(150));
 
-            // Set to clipboard
-            let _ = backend::clipboard::set_text_robust(&emoji_str);
-
-            // Restore focus and verify it settled
+            // IMPORTANT: Restore focus BEFORE setting clipboard.
+            // If we set clipboard first, the target window's clipboard manager may
+            // reclaim the CLIPBOARD X11 selection when it receives focus,
+            // overwriting our emoji with the previous clipboard content.
             match backend::simulator::restore_focused_window() {
                 Ok(true) => {
                     // Focus settled successfully
                 }
                 _ => {
-                    // Focus restoration could not be verified in time - sleep a bit extra to be safe
+                    // Focus restoration could not be verified - wait a bit extra
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
             }
 
-            // Wait for clipboard to settle
-            std::thread::sleep(std::time::Duration::from_millis(60));
+            // Now set the emoji to clipboard (focus is already on target window)
+            let _ = backend::clipboard::set_text_robust(&emoji_str);
+
+            // Wait for clipboard to settle before pasting
+            std::thread::sleep(std::time::Duration::from_millis(80));
 
             // Simulate paste
             if let Err(e) = backend::simulator::simulate_paste_keystroke() {
@@ -722,10 +744,15 @@ fn show_main_window(
             }
         });
 
-
+        // 5. Open URL Callback (Contribute button)
+        main_win.on_open_url(move |url| {
+            let _ = std::process::Command::new("xdg-open").arg(url.as_str()).spawn();
+        });
 
         let _ = main_win.window().show();
         *store = Some(main_win);
+
+
     }
 }
 

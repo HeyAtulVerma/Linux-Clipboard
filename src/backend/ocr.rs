@@ -129,30 +129,30 @@ pub fn preprocess_image_for_ocr(input_path: &Path) -> Result<PathBuf, String> {
 /// Perform OCR text extraction on an image file or in-memory image buffer
 pub fn extract_text_from_image_buffer(image_bytes: &[u8]) -> Result<String, String> {
     let tmp_path = std::env::temp_dir().join(format!("lincb_ocr_{}.png", uuid::Uuid::new_v4()));
-    std::fs::write(&tmp_path, image_bytes)
-        .map_err(|e| format!("Failed to write OCR temp image: {}", e))?;
+    if std::fs::write(&tmp_path, image_bytes).is_err() {
+        return Err("Failed to write temp image for OCR".to_string());
+    }
 
-    let result = extract_text_from_file(&tmp_path);
+    let res = if let Ok(preprocessed_path) = preprocess_image_for_ocr(&tmp_path) {
+        let r = run_tesseract_on_path(&preprocessed_path);
+        let _ = std::fs::remove_file(&preprocessed_path);
+        r
+    } else {
+        run_tesseract_on_path(&tmp_path)
+    };
+
     let _ = std::fs::remove_file(&tmp_path);
-    result
+    res
 }
 
 /// Perform OCR text extraction directly from image path with automatic pre-processing
 pub fn extract_text_from_file(image_path: &Path) -> Result<String, String> {
-    // Try preprocessed image first for enhanced contrast & 2.5x scaling
-    if let Ok(preprocessed_path) = preprocess_image_for_ocr(image_path) {
-        let res = run_tesseract_on_path(&preprocessed_path);
-        let _ = std::fs::remove_file(&preprocessed_path);
-        if let Ok(text) = res {
-            if !text.trim().is_empty() {
-                return Ok(text);
-            }
-        }
+    if let Ok(bytes) = std::fs::read(image_path) {
+        return extract_text_from_image_buffer(&bytes);
     }
-
-    // Fallback to raw image if preprocessed yields nothing
     run_tesseract_on_path(image_path)
 }
+
 
 fn run_tesseract_on_path(image_path: &Path) -> Result<String, String> {
     let mut lt = LepTess::new(None, "eng")

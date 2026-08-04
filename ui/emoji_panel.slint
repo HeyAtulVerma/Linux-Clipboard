@@ -5,7 +5,7 @@ import { ScrollView } from "std-widgets.slint";
 import { SlintEmojiRow } from "./types.slint";
 
 export component EmojiPanel inherits VerticalLayout {
-    // State properties
+    // State properties 
     in-out property <int> active-emoji-category;
     in property <[SlintEmojiRow]> emoji-rows;
 
@@ -20,7 +20,7 @@ export component EmojiPanel inherits VerticalLayout {
     callback record-emoji(string);
 
     spacing: 8px;
-    
+
     // Categories Bar
     HorizontalLayout {
         height: 36px;
@@ -28,7 +28,7 @@ export component EmojiPanel inherits VerticalLayout {
         padding-left: 6px;
         padding-right: 6px;
         alignment: center;
-        
+
         // Category 0: Smileys
         TouchArea {
             width: 32px;
@@ -192,35 +192,35 @@ export component EmojiPanel inherits VerticalLayout {
             }
         }
     }
-    
+
     ScrollView {
         viewport-height: emoji-rows.length * 52px;
-        
+
         VerticalLayout {
             padding: 8px;
             spacing: 8px;
             alignment: start;
-            
-            for row in emoji_rows : HorizontalLayout {
+
+            for row in emoji_rows: HorizontalLayout {
                 spacing: 8px;
                 alignment: start;
-                
-                for emoji in row.cols : TouchArea {
+
+                for emoji in row.cols: TouchArea {
                     width: 44px;
                     height: 44px;
                     clicked => {
                         record-emoji(emoji.character);
                     }
-                    
+
                     Rectangle {
                         background: parent.has-hover ? card-hover-bg : card-bg;
                         border-radius: 6px;
                         border-width: 1px;
                         border-color: border-color;
-                        
+
                         Text {
                             text: emoji.character;
-                            font-size: 20px;
+                            font-size: 22px;
                             font-family: "Noto Color Emoji";
                             horizontal-alignment: center;
                             vertical-alignment: center;

@@ -8,8 +8,8 @@ use std::path::PathBuf;
 const USER_SETTINGS_FILE: &str = "settings.json";
 pub const DEFAULT_MAX_HISTORY_SIZE: usize = 50;
 
-fn default_true() -> bool {
-    true
+fn default_false() -> bool {
+    false
 }
 
 fn default_accent() -> String {
@@ -26,15 +26,15 @@ pub struct UserSettings {
     #[serde(default = "default_accent")]
     pub accent_color: String,
 
-    // --- Feature Flags ---
+    // --- Feature Flags (default to false per user requirement) ---
     /// Enable Clipboard History tool (Alt + V)
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub enable_clipboard_feature: bool,
     /// Enable Emoji Picker tool (Alt + .)
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub enable_emoji_feature: bool,
     /// Enable Screen OCR Text Extractor (Alt + Shift + T)
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     pub enable_ocr_feature: bool,
 
     // --- History Settings ---
@@ -51,9 +51,9 @@ impl Default for UserSettings {
         Self {
             theme_mode: "system".to_string(),
             accent_color: default_accent(),
-            enable_clipboard_feature: true,
-            enable_emoji_feature: true,
-            enable_ocr_feature: true,
+            enable_clipboard_feature: false,
+            enable_emoji_feature: false,
+            enable_ocr_feature: false,
             max_history_size: DEFAULT_MAX_HISTORY_SIZE,
             auto_delete_interval: 0,
             auto_delete_unit: "hours".to_string(),

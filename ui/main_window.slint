@@ -5,7 +5,9 @@ import { ScrollView } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "MagicToys";
-    icon: @image-url("../icon_rounded.png");
+    icon: @image-url("../icon.png");
+
+
     preferred-width: 800px;
     preferred-height: 560px;
     background: bg-color;
@@ -13,12 +15,13 @@ export component MainWindow inherits Window {
     // Active section: 0=General, 1=Clipboard, 2=Emoji, 3=Text Extractor
     in-out property <int> active-section: 0;
 
-    // Core properties
+    // Core properties (tools default to toggled off per user requirement)
     in-out property <string> theme-mode: "system";
     in-out property <bool> is-dark: true;
-    in-out property <bool> enable-clipboard: true;
-    in-out property <bool> enable-emoji: true;
-    in-out property <bool> enable-ocr: true;
+    in-out property <bool> enable-clipboard: false;
+    in-out property <bool> enable-emoji: false;
+    in-out property <bool> enable-ocr: false;
+
     in-out property <int> history-count: 0;
     in-out property <bool> clip-has-conflict: false;
     in-out property <bool> emoji-has-conflict: false;
@@ -52,6 +55,8 @@ export component MainWindow inherits Window {
     callback toggle-ocr(bool);
     callback fix-single-shortcut(string);
     callback clear-history();
+    callback open-url(string);
+
 
     // ── Root layout ──────────────────────────────────────
     HorizontalLayout {
@@ -72,7 +77,6 @@ export component MainWindow inherits Window {
                 padding-left: 12px;
                 padding-right: 12px;
                 spacing: 2px;
-                alignment: start;
 
                 // Brand header
                 HorizontalLayout {
@@ -81,23 +85,25 @@ export component MainWindow inherits Window {
                     padding-left: 4px;
 
                     Image {
-                        source: @image-url("../icon_rounded.png");
-                        width: 22px;
-                        height: 22px;
+                        source: @image-url("../icon.png");
+                        width: 44px;
+                        height: 44px;
                     }
+
+
 
                     VerticalLayout {
                         alignment: center;
                         Text {
                             text: "MagicToys";
-                            font-size: 13px;
+                            font-size: 15px;
                             font-weight: 700;
                             color: text-color;
                         }
 
                         Text {
                             text: "by Ople";
-                            font-size: 10px;
+                            font-size: 12px;
                             color: accent;
                         }
                     }
@@ -115,7 +121,7 @@ export component MainWindow inherits Window {
                             spacing: 10px;
                             Text {
                                 text: "General";
-                                font-size: 12px;
+                                font-size: 14px;
                                 font-weight: root.active-section == 0 ? 700 : 400;
                                 color: root.active-section == 0 ? #ffffff : text-color;
                                 vertical-alignment: center;
@@ -135,7 +141,7 @@ export component MainWindow inherits Window {
                             spacing: 10px;
                             Text {
                                 text: "Clipboard";
-                                font-size: 12px;
+                                font-size: 14px;
                                 font-weight: root.active-section == 1 ? 700 : 400;
                                 color: root.active-section == 1 ? #ffffff : text-color;
                                 vertical-alignment: center;
@@ -155,9 +161,10 @@ export component MainWindow inherits Window {
                             spacing: 10px;
                             Text {
                                 text: "Emoji Picker";
-                                font-size: 12px;
+                                font-size: 14px;
                                 font-weight: root.active-section == 2 ? 700 : 400;
                                 color: root.active-section == 2 ? #ffffff : text-color;
+
                                 vertical-alignment: center;
                             }
                         }
@@ -175,7 +182,7 @@ export component MainWindow inherits Window {
                             spacing: 10px;
                             Text {
                                 text: "Text Extractor";
-                                font-size: 12px;
+                                font-size: 14px;
                                 font-weight: root.active-section == 3 ? 700 : 400;
                                 color: root.active-section == 3 ? #ffffff : text-color;
                                 vertical-alignment: center;
@@ -184,20 +191,57 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                // Spacer
+                // Spacer pushes version badge down to stick as a footer
                 Rectangle {
                     vertical-stretch: 1;
                 }
 
-                // Version badge
-                Text {
-                    text: "v0.1.0 Beta";
-                    font-size: 10px;
-                    color: text-muted;
-                    horizontal-alignment: center;
-                    padding-bottom: 4px;
+                // Version badge: v0.0.3 with green Beta pill (sticking to bottom footer)
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    height: 24px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "v0.0.3";
+                            font-size: 13px;
+                            font-weight: 500;
+                            color: text-muted;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        background: rgba(34, 197, 94, 0.15);
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: rgba(34, 197, 94, 0.3);
+                        height: 20px;
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: "Beta";
+                                    font-size: 12px;
+                                    font-weight: 700;
+                                    color: #22c55e;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
                 }
+
             }
+
         }
 
         // ── CONTENT AREA ─────────────────────────────────
@@ -221,7 +265,7 @@ export component MainWindow inherits Window {
                             : root.active-section == 1 ? "Clipboard History"
                             : root.active-section == 2 ? "Emoji Picker"
                             : "Text Extractor (OCR)";
-                        font-size: 13px;
+                        font-size: 15px;
                         font-weight: 600;
                         color: text-color;
                         vertical-alignment: center;
@@ -260,14 +304,14 @@ export component MainWindow inherits Window {
                                         spacing: 2px;
                                         Text {
                                             text: "Appearance";
-                                            font-size: 12px;
+                                            font-size: 14px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
 
                                         Text {
                                             text: "Choose light, dark, or follow system theme";
-                                            font-size: 11px;
+                                            font-size: 13px;
                                             color: text-muted;
                                         }
                                     }
@@ -286,7 +330,7 @@ export component MainWindow inherits Window {
                                                 border-color: root.theme-mode == "system" ? accent : border-color;
                                                 Text {
                                                     text: "Auto";
-                                                    font-size: 11px;
+                                                    font-size: 13px;
                                                     font-weight: 600;
                                                     color: root.theme-mode == "system" ? #ffffff : text-muted;
                                                     horizontal-alignment: center;
@@ -305,7 +349,7 @@ export component MainWindow inherits Window {
                                                 border-color: root.theme-mode == "dark" ? accent : border-color;
                                                 Text {
                                                     text: "Dark";
-                                                    font-size: 11px;
+                                                    font-size: 13px;
                                                     font-weight: 600;
                                                     color: root.theme-mode == "dark" ? #ffffff : text-muted;
                                                     horizontal-alignment: center;
@@ -324,7 +368,7 @@ export component MainWindow inherits Window {
                                                 border-color: root.theme-mode == "light" ? accent : border-color;
                                                 Text {
                                                     text: "Light";
-                                                    font-size: 11px;
+                                                    font-size: 13px;
                                                     font-weight: 600;
                                                     color: root.theme-mode == "light" ? #ffffff : text-muted;
                                                     horizontal-alignment: center;
@@ -348,14 +392,14 @@ export component MainWindow inherits Window {
                                         spacing: 2px;
                                         Text {
                                             text: "Accent Color";
-                                            font-size: 12px;
+                                            font-size: 14px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
 
                                         Text {
                                             text: "Active color used across the interface";
-                                            font-size: 11px;
+                                            font-size: 13px;
                                             color: text-muted;
                                         }
                                     }
@@ -440,12 +484,19 @@ export component MainWindow inherits Window {
                             }
                         }
 
-                        // About card
+                        // Flexible spacer positioning the About card as a footer card
+                        Rectangle {
+                            height: 220px;
+                        }
+
+
+                        // About card: MagicToys Open-Source project by Ople with Contribute button
                         Rectangle {
                             background: card-bg;
                             border-radius: 8px;
                             border-width: 1px;
                             border-color: border-color;
+
 
                             HorizontalLayout {
                                 padding: 16px;
@@ -454,30 +505,55 @@ export component MainWindow inherits Window {
 
                                 VerticalLayout {
                                     spacing: 4px;
+                                    alignment: center;
+
                                     Text {
                                         text: "MagicToys";
-                                        font-size: 13px;
+                                        font-size: 15px;
                                         font-weight: 700;
                                         color: text-color;
                                     }
 
                                     Text {
-                                        text: "Native clipboard, emoji, and OCR tools for Linux";
-                                        font-size: 11px;
+                                        text: "Open-Source project by Ople";
+                                        font-size: 13px;
                                         color: text-muted;
                                     }
                                 }
 
-                                Text {
-                                    text: "lincb.ople.in";
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    color: accent;
-                                    vertical-alignment: center;
+                                contribute-btn := TouchArea {
+                                    width: 108px;
+                                    height: 32px;
+                                    clicked => { root.open-url("https://github.com"); }
+
+                                    Rectangle {
+                                        width: 100%;
+                                        height: 100%;
+                                        background: contribute-btn.has-hover ? accent.darker(0.1) : accent;
+                                        border-radius: 6px;
+
+                                        HorizontalLayout {
+                                            alignment: center;
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Text {
+                                                    text: "Contribute ↗";
+                                                    font-size: 13px;
+                                                    font-weight: 600;
+                                                    color: #ffffff;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
+
                     }
+
+
 
                     // ═══════════════════════════════
                     // SECTION 1: CLIPBOARD
@@ -504,14 +580,14 @@ export component MainWindow inherits Window {
                                         spacing: 2px;
                                         Text {
                                             text: "Clipboard History";
-                                            font-size: 12px;
+                                            font-size: 14px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
 
                                         Text {
                                             text: "Monitor clipboard changes — shortcut: Alt + V";
-                                            font-size: 11px;
+                                            font-size: 13px;
                                             color: text-muted;
                                         }
                                     }
@@ -547,7 +623,7 @@ export component MainWindow inherits Window {
 
                                     Text {
                                         text: "Global Shortcut";
-                                        font-size: 11px;
+                                        font-size: 13px;
                                         color: text-muted;
                                         vertical-alignment: center;
                                     }
@@ -566,7 +642,7 @@ export component MainWindow inherits Window {
                                                 padding-right: 8px;
                                                 Text {
                                                     text: "Alt + V";
-                                                    font-size: 11px;
+                                                    font-size: 13px;
                                                     font-weight: 700;
                                                     color: accent;
                                                     vertical-alignment: center;
@@ -584,7 +660,7 @@ export component MainWindow inherits Window {
                                                 border-radius: 4px;
                                                 Text {
                                                     text: "Fix Shortcut";
-                                                    font-size: 10px;
+                                                    font-size: 12px;
                                                     font-weight: 700;
                                                     color: #ffffff;
                                                     horizontal-alignment: center;
@@ -598,7 +674,7 @@ export component MainWindow inherits Window {
                                 // Conflict warning — only if conflict
                                 if (root.enable-clipboard && root.clip-has-conflict): Text {
                                     text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 11px;
+                                    font-size: 13px;
                                     color: danger-color;
                                 }
                             }
@@ -619,7 +695,7 @@ export component MainWindow inherits Window {
                                     alignment: space-between;
                                     Text {
                                         text: "Saved Items";
-                                        font-size: 12px;
+                                        font-size: 14px;
                                         font-weight: 600;
                                         color: text-color;
                                         vertical-alignment: center;
@@ -627,7 +703,7 @@ export component MainWindow inherits Window {
 
                                     Text {
                                         text: root.history-count + " clips";
-                                        font-size: 12px;
+                                        font-size: 14px;
                                         font-weight: 700;
                                         color: accent;
                                         vertical-alignment: center;
@@ -645,14 +721,14 @@ export component MainWindow inherits Window {
                                         spacing: 2px;
                                         Text {
                                             text: "Clear History";
-                                            font-size: 12px;
+                                            font-size: 14px;
                                             font-weight: 600;
                                             color: danger-color;
                                         }
 
                                         Text {
                                             text: "Permanently delete all stored clips";
-                                            font-size: 11px;
+                                            font-size: 13px;
                                             color: text-muted;
                                         }
                                     }
@@ -668,7 +744,7 @@ export component MainWindow inherits Window {
                                             border-color: clr-btn.has-hover ? danger-color : danger-color;
                                             Text {
                                                 text: "Clear All";
-                                                font-size: 11px;
+                                                font-size: 13px;
                                                 font-weight: 600;
                                                 color: clr-btn.has-hover ? #ffffff : danger-color;
                                                 horizontal-alignment: center;
@@ -704,14 +780,14 @@ export component MainWindow inherits Window {
                                         spacing: 2px;
                                         Text {
                                             text: "Emoji Picker";
-                                            font-size: 12px;
+                                            font-size: 14px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
 
                                         Text {
                                             text: "Enable emoji picker tab — shortcut: Alt + .";
-                                            font-size: 11px;
+                                            font-size: 13px;
                                             color: text-muted;
                                         }
                                     }
@@ -744,7 +820,7 @@ export component MainWindow inherits Window {
                                     alignment: space-between;
                                     Text {
                                         text: "Global Shortcut";
-                                        font-size: 11px;
+                                        font-size: 13px;
                                         color: text-muted;
                                         vertical-alignment: center;
                                     }
@@ -762,7 +838,7 @@ export component MainWindow inherits Window {
                                                 padding-right: 8px;
                                                 Text {
                                                     text: "Alt + .";
-                                                    font-size: 11px;
+                                                    font-size: 13px;
                                                     font-weight: 700;
                                                     color: accent;
                                                     vertical-alignment: center;
@@ -779,7 +855,7 @@ export component MainWindow inherits Window {
                                                 border-radius: 4px;
                                                 Text {
                                                     text: "Fix Shortcut";
-                                                    font-size: 10px;
+                                                    font-size: 12px;
                                                     font-weight: 700;
                                                     color: #ffffff;
                                                     horizontal-alignment: center;
@@ -792,7 +868,7 @@ export component MainWindow inherits Window {
 
                                 if (root.enable-emoji && root.emoji-has-conflict): Text {
                                     text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 11px;
+                                    font-size: 13px;
                                     color: danger-color;
                                 }
                             }
@@ -822,14 +898,14 @@ export component MainWindow inherits Window {
                                         spacing: 2px;
                                         Text {
                                             text: "Text Extractor (OCR)";
-                                            font-size: 12px;
+                                            font-size: 14px;
                                             font-weight: 600;
                                             color: text-color;
                                         }
 
                                         Text {
                                             text: "Capture text from screen region — shortcut: Alt + Shift + T";
-                                            font-size: 11px;
+                                            font-size: 13px;
                                             color: text-muted;
                                         }
                                     }
@@ -862,7 +938,7 @@ export component MainWindow inherits Window {
                                     alignment: space-between;
                                     Text {
                                         text: "Global Shortcut";
-                                        font-size: 11px;
+                                        font-size: 13px;
                                         color: text-muted;
                                         vertical-alignment: center;
                                     }
@@ -880,7 +956,7 @@ export component MainWindow inherits Window {
                                                 padding-right: 8px;
                                                 Text {
                                                     text: "Alt + Shift + T";
-                                                    font-size: 11px;
+                                                    font-size: 13px;
                                                     font-weight: 700;
                                                     color: accent;
                                                     vertical-alignment: center;
@@ -897,7 +973,7 @@ export component MainWindow inherits Window {
                                                 border-radius: 4px;
                                                 Text {
                                                     text: "Fix Shortcut";
-                                                    font-size: 10px;
+                                                    font-size: 12px;
                                                     font-weight: 700;
                                                     color: #ffffff;
                                                     horizontal-alignment: center;
@@ -910,7 +986,7 @@ export component MainWindow inherits Window {
 
                                 if (root.enable-ocr && root.ocr-has-conflict): Text {
                                     text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 11px;
+                                    font-size: 13px;
                                     color: danger-color;
                                 }
                             }

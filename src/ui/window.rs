@@ -58,7 +58,8 @@ pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
                     use x11rb::protocol::xproto::ConnectionExt;
                     if let Ok((conn, _)) = x11rb::connect(None) {
                         // 1. Set WM_CLASS to match the desktop file and prevent "Unknown" in dock
-                        let class_data = b"lincb.ople.in\0lincb.ople.in\0";
+                        let class_data = b"magictoys\0magictoys\0";
+
                         let _ = conn.change_property(
                             x11rb::protocol::xproto::PropMode::REPLACE,
                             xid,
@@ -69,14 +70,14 @@ pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
                             class_data,
                         );
 
-                        // 2. Set _NET_WM_STATE_SKIP_TASKBAR
+                        // 2. Set _NET_WM_STATE_SKIP_TASKBAR using REPLACE mode to prevent property duplication
                         if let Ok(reply_state) = conn.intern_atom(false, b"_NET_WM_STATE") {
                             if let Ok(reply_skip) = conn.intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR") {
                                 if let (Ok(r_state), Ok(r_skip)) = (reply_state.reply(), reply_skip.reply()) {
                                     let net_wm_state = r_state.atom;
                                     let net_wm_state_skip_taskbar = r_skip.atom;
                                     let _ = conn.change_property(
-                                        x11rb::protocol::xproto::PropMode::APPEND,
+                                        x11rb::protocol::xproto::PropMode::REPLACE,
                                         xid,
                                         net_wm_state,
                                         x11rb::protocol::xproto::AtomEnum::ATOM,
@@ -102,6 +103,8 @@ pub fn setup_focus_loss_listener(app: &crate::AppWindow) -> slint::Timer {
     
     // We track whether the window has received focus since it was made visible.
     // We also track ticks to give the window manager time to map the window and settle focus.
+    // On first open the WM may take 500ms–1s+ to raise & focus the window, so we use a
+    // generous 25-tick (2.5s) grace window before we start watching for focus loss.
     let mut has_had_focus = false;
     let mut visible_ticks = 0;
     
@@ -120,8 +123,11 @@ pub fn setup_focus_loss_listener(app: &crate::AppWindow) -> slint::Timer {
                         has_had_focus = true;
                     }
                     
-                    if visible_ticks > 10 && has_had_focus && !is_focused {
-                        // Only hide if window was ACTUALLY focused by user and then lost focus
+                    // Only auto-hide when:
+                    //  - Grace period has expired (25 ticks = 2.5s)
+                    //  - We confirmed the window was focused at least once
+                    //  - Focus is now lost
+                    if visible_ticks > 25 && has_had_focus && !is_focused {
                         let _ = app.window().hide();
                         app.invoke_reset_state();
                         has_had_focus = false;

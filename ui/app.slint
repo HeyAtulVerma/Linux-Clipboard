@@ -12,11 +12,14 @@ export { MainWindow }
 
 export component AppWindow inherits Window {
     title: "MagicToys";
+
+
     width: 360px;
     height: 480px;
     always-on-top: true;
-    background: transparent;
+    background: bg-color;
     no-frame: true;
+
 
     // Callbacks to Rust backend
     callback paste-item(string);
@@ -41,9 +44,10 @@ export component AppWindow inherits Window {
     in-out property <int> active-tab: 0;
     in-out property <int> active-emoji-category: 0;
     in-out property <bool> is-dark: true;
-    in-out property <bool> enable-clipboard: true;
-    in-out property <bool> enable-emoji: true;
-    in-out property <bool> enable-ocr: true;
+    in-out property <bool> enable-clipboard: false;
+    in-out property <bool> enable-emoji: false;
+    in-out property <bool> enable-ocr: false;
+
     in-out property <string> search-placeholder: "Search clipboard...";
     in-out property <string> search-text: "";
     in-out property <string> theme-mode: "system";
@@ -121,13 +125,25 @@ export component AppWindow inherits Window {
                     z: 10;
                     alignment: space-between;
 
-                    Text {
-                        text: "MagicToys";
-                        font-size: 14px;
-                        font-weight: 700;
-                        color: text-color;
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: center;
+
+                        Image {
+                            source: @image-url("../icon.png");
+                            width: 28px;
+                            height: 28px;
+                        }
+
+                        Text {
+                            text: "MagicToys";
+                            font-size: 16px;
+                            font-weight: 700;
+                            color: text-color;
+                            vertical-alignment: center;
+                        }
                     }
+
 
                     HorizontalLayout {
                         spacing: 6px;
@@ -142,7 +158,7 @@ export component AppWindow inherits Window {
                                 border-radius: 5px;
                                 Text {
                                     text: "🗑";
-                                    font-size: 13px;
+                                    font-size: 15px;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
@@ -159,7 +175,7 @@ export component AppWindow inherits Window {
                                 border-radius: 5px;
                                 Text {
                                     text: "⚙";
-                                    font-size: 14px;
+                                    font-size: 16px;
                                     color: text-secondary;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
@@ -177,7 +193,7 @@ export component AppWindow inherits Window {
                                 border-radius: 5px;
                                 Text {
                                     text: "✕";
-                                    font-size: 12px;
+                                    font-size: 14px;
                                     color: close-btn.has-hover ? #ffffff : text-secondary;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
@@ -189,7 +205,7 @@ export component AppWindow inherits Window {
 
                 // ── Tab Bar ─────────────────────────────────
                 HorizontalLayout {
-                    height: 32px;
+                    height: 34px;
                     spacing: 4px;
 
                     if (enable-clipboard) : TouchArea {
@@ -206,7 +222,7 @@ export component AppWindow inherits Window {
                             border-color: active-tab == 0 ? accent : border-color;
                             Text {
                                 text: "History";
-                                font-size: 11px;
+                                font-size: 13px;
                                 font-weight: 600;
                                 color: active-tab == 0 ? accent : text-secondary;
                                 horizontal-alignment: center;
@@ -231,7 +247,7 @@ export component AppWindow inherits Window {
                             border-color: active-tab == 1 ? accent : border-color;
                             Text {
                                 text: "Emoji";
-                                font-size: 11px;
+                                font-size: 13px;
                                 font-weight: 600;
                                 color: active-tab == 1 ? accent : text-secondary;
                                 horizontal-alignment: center;
@@ -243,7 +259,7 @@ export component AppWindow inherits Window {
 
                 // ── Search Bar ──────────────────────────────
                 Rectangle {
-                    height: 34px;
+                    height: 36px;
                     background: card-bg;
                     border-radius: 7px;
                     border-width: 1px;
@@ -256,7 +272,7 @@ export component AppWindow inherits Window {
 
                         search-input := TextInput {
                             text <=> root.search-text;
-                            font-size: 12px;
+                            font-size: 14px;
                             color: text-color;
                             single-line: true;
                             vertical-alignment: center;
@@ -285,7 +301,7 @@ export component AppWindow inherits Window {
 
                             if (self.text == "") : Text {
                                 text: search-placeholder;
-                                font-size: 12px;
+                                font-size: 14px;
                                 color: text-secondary;
                                 vertical-alignment: center;
                             }
@@ -309,13 +325,14 @@ export component AppWindow inherits Window {
                             height: 200px;
                             Text {
                                 text: "📋";
-                                font-size: 28px;
+                                font-size: 32px;
                                 horizontal-alignment: center;
                             }
                             Text {
                                 text: "Clipboard history is empty";
-                                font-size: 12px;
+                                font-size: 14px;
                                 font-weight: 600;
+
                                 color: root.text-secondary;
                                 horizontal-alignment: center;
                             }

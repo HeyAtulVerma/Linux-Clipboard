@@ -15,30 +15,31 @@ pub struct DesktopShortcut {
 
 const SHORTCUTS: &[DesktopShortcut] = &[
     DesktopShortcut {
-        id: "lincb-ople-in-toggle",
+        id: "magictoys-toggle",
         name: "Toggle Clipboard History",
-        command: "lincb.ople.in --toggle",
+        command: "magictoys --toggle",
         gnome_binding: "<Alt>v",
         kde_shortcut_key: "Alt+V",
         xfce_property: "/commands/custom/<Alt>v",
     },
     DesktopShortcut {
-        id: "lincb-ople-in-emoji",
+        id: "magictoys-emoji",
         name: "Open Emoji Picker",
-        command: "lincb.ople.in --emoji",
+        command: "magictoys --emoji",
         gnome_binding: "<Alt>period",
         kde_shortcut_key: "Alt+.",
         xfce_property: "/commands/custom/<Alt>period",
     },
     DesktopShortcut {
-        id: "lincb-ople-in-ocr",
+        id: "magictoys-ocr",
         name: "Extract Screen Text (OCR)",
-        command: "lincb.ople.in --ocr",
+        command: "magictoys --ocr",
         gnome_binding: "<Alt><Shift>t",
         kde_shortcut_key: "Alt+Shift+T",
         xfce_property: "/commands/custom/<Alt><Shift>t",
     },
 ];
+
 
 /// Helper to detect if a shell command is available
 fn command_exists(cmd: &str) -> bool {
@@ -79,12 +80,25 @@ pub fn detect_desktop_environment() -> String {
 /// Check if Super+V is already registered with another action
 /// Checks if a specific shortcut key ("toggle", "emoji", "ocr") has an active system conflict
 pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
+    if shortcut_key == "all" {
+        return check_shortcut_conflict().map(|res| res.is_some()).unwrap_or(false);
+    }
+
+    // gsettings returns binding values WITH surrounding single quotes, e.g. '<Alt>v'
     let target_binding = match shortcut_key {
         "toggle" => "'<Alt>v'",
         "emoji" => "'<Alt>period'",
         "ocr" => "'<Alt><Shift>t'",
         _ => return false,
     };
+    // Also the sc.id path prefix so we can skip our own entries
+    let own_sc_id = match shortcut_key {
+        "toggle" => "magictoys-toggle",
+        "emoji" => "magictoys-emoji",
+        "ocr" => "magictoys-ocr",
+        _ => "",
+    };
+
 
     let de = detect_desktop_environment();
     if de == "gnome" && command_exists("gsettings") {
@@ -114,7 +128,12 @@ pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
                     .collect();
 
                 for path in custom_list {
-                    if path.contains("lincb.ople.in") || path.contains("lincb-ople-in") {
+                    // Skip our own MagicToys shortcuts — they are not conflicts
+                    if path.contains("lincb.ople.in")
+                        || path.contains("lincb-ople-in")
+                        || path.contains(own_sc_id)
+                        || path.contains("magictoys")
+                    {
                         continue;
                     }
 
@@ -123,6 +142,7 @@ pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
                         .args(["get", &format!("{}:{}", base_path, path), "binding"])
                         .output()
                     {
+                        // gsettings wraps string values in single quotes: '<Alt>v'
                         let binding = String::from_utf8_lossy(&b_out.stdout).trim().to_string();
                         if binding == target_binding {
                             return true;
@@ -175,7 +195,11 @@ pub fn check_shortcut_conflict() -> Result<Option<String>, String> {
                 .collect();
 
             for path in custom_list {
-                if path.contains("lincb.ople.in") || path.contains("lincb-ople-in") {
+                // Skip our own MagicToys shortcuts — they are not conflicts
+                if path.contains("lincb.ople.in")
+                    || path.contains("lincb-ople-in")
+                    || path.contains("magictoys")
+                {
                     continue;
                 }
 
@@ -310,6 +334,10 @@ pub fn fix_shortcut_conflict() -> Result<(), String> {
 
 /// Register desktop environment shortcuts based on UserSettings feature flags
 pub fn register_shortcuts_filtered(settings: &crate::config::UserSettings) -> Result<(), String> {
+    if settings.enable_clipboard_feature && settings.enable_emoji_feature && settings.enable_ocr_feature {
+        return register_shortcuts();
+    }
+
     if settings.enable_clipboard_feature {
         fix_single_shortcut("toggle")?;
     } else {
@@ -331,6 +359,7 @@ pub fn register_shortcuts_filtered(settings: &crate::config::UserSettings) -> Re
     Ok(())
 }
 
+
 /// Register all desktop environment shortcuts
 pub fn register_shortcuts() -> Result<(), String> {
     let de = detect_desktop_environment();
@@ -347,12 +376,18 @@ pub fn register_shortcuts() -> Result<(), String> {
 
 /// Unregister a single shortcut by key ("toggle", "emoji", "ocr")
 pub fn unregister_single_shortcut(shortcut_key: &str) -> Result<(), String> {
+    if shortcut_key == "all" {
+        return unregister_shortcuts();
+    }
+
     let sc_id = match shortcut_key {
-        "toggle" => "lincb-ople-in-toggle",
-        "emoji" => "lincb-ople-in-emoji",
-        "ocr" => "lincb-ople-in-ocr",
+        "toggle" => "magictoys-toggle",
+        "emoji" => "magictoys-emoji",
+        "ocr" => "magictoys-ocr",
         _ => return Err("Invalid shortcut identifier".to_string()),
     };
+
+
 
     let de = detect_desktop_environment();
     if de == "gnome" && command_exists("gsettings") {
@@ -400,8 +435,8 @@ pub fn unregister_single_shortcut(shortcut_key: &str) -> Result<(), String> {
 }
 
 /// Unregister desktop environment shortcuts
-#[allow(dead_code)]
 pub fn unregister_shortcuts() -> Result<(), String> {
+
     let de = detect_desktop_environment();
     match de.as_str() {
         "gnome" => unregister_gnome()?,
@@ -464,8 +499,8 @@ fn register_gnome() -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
 fn unregister_gnome() -> Result<(), String> {
+
     if !command_exists("gsettings") {
         return Ok(());
     }
@@ -531,8 +566,8 @@ fn register_kde() -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
 fn unregister_kde() -> Result<(), String> {
+
     let kwc = if command_exists("kwriteconfig6") {
         "kwriteconfig6"
     } else if command_exists("kwriteconfig5") {
@@ -569,8 +604,8 @@ fn register_xfce() -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
 fn unregister_xfce() -> Result<(), String> {
+
     if !command_exists("xfconf-query") {
         return Ok(());
     }
@@ -586,12 +621,17 @@ fn unregister_xfce() -> Result<(), String> {
 
 /// Fixes/registers a single specific shortcut instantly ("toggle", "emoji", or "ocr")
 pub fn fix_single_shortcut(shortcut_type: &str) -> Result<(), String> {
+    if shortcut_type == "all" {
+        return fix_shortcut_conflict();
+    }
+
     let target_sc = match shortcut_type {
         "toggle" => &SHORTCUTS[0],
         "emoji" => &SHORTCUTS[1],
         "ocr" => &SHORTCUTS[2],
         _ => return Err("Unknown shortcut type".to_string()),
     };
+
 
     let de = detect_desktop_environment();
     match de.as_str() {

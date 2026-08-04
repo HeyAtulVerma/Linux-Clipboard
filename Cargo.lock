@@ -3200,37 +3200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lincb-ople-in"
-version = "0.0.3"
-dependencies = [
- "arboard",
- "base64",
- "chrono",
- "dirs 5.0.1",
- "emojis",
- "futures-lite",
- "gtk",
- "i-slint-backend-winit",
- "image",
- "leptess",
- "libc",
- "once_cell",
- "parking_lot",
- "percent-encoding",
- "png 0.17.16",
- "rusqlite",
- "serde",
- "serde_json",
- "slint",
- "slint-build",
- "tokio",
- "tray-icon",
- "uuid",
- "x11rb",
- "zbus 4.4.0",
-]
-
-[[package]]
 name = "linebender_resource_handle"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3338,6 +3307,37 @@ checksum = "5c463f9c428b7fc5ec885dcd39ce4aa61e29111d0e33483f6f98c74e89d8621e"
 dependencies = [
  "lyon_geom",
  "num-traits",
+]
+
+[[package]]
+name = "magictoys"
+version = "0.0.3"
+dependencies = [
+ "arboard",
+ "base64",
+ "chrono",
+ "dirs 5.0.1",
+ "emojis",
+ "futures-lite",
+ "gtk",
+ "i-slint-backend-winit",
+ "image",
+ "leptess",
+ "libc",
+ "once_cell",
+ "parking_lot",
+ "percent-encoding",
+ "png 0.17.16",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "tokio",
+ "tray-icon",
+ "uuid",
+ "x11rb",
+ "zbus 4.4.0",
 ]
 
 [[package]]
