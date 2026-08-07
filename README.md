@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://magictoys.ople.in"><img src="https://img.shields.io/badge/Website-magictoys.ople.in-0078D4?style=for-the-badge&logo=firefox" alt="Website" /></a>
-  <a href="https://github.com/AtulVermaGithub/Linux-Clipboard/releases"><img src="https://img.shields.io/badge/Release-v0.0.3--beta-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
+  <a href="https://github.com/HeyAtulVerma/MagicToys/releases"><img src="https://img.shields.io/badge/Release-v0.0.3--beta-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" /></a>
   <img src="https://img.shields.io/badge/Built_With-Rust_%26_Slint-orange?style=for-the-badge&logo=rust" alt="Rust & Slint" />
 </p>
@@ -51,7 +51,7 @@ curl -sS https://magictoys.ople.in/install.sh | bash
 
 ## 📦 Manual Package Installation Options
 
-Download pre-built packages from the [Releases Page](https://github.com/AtulVermaGithub/Linux-Clipboard/releases):
+Download pre-built packages from the [Releases Page](https://github.com/HeyAtulVerma/MagicToys/releases):
 
 ### 1. Ubuntu / Debian / Pop!_OS / Mint (`.deb`)
 ```bash
@@ -103,8 +103,8 @@ sudo apt update && sudo apt install -y \
 
 ### Build Binary:
 ```bash
-git clone https://github.com/AtulVermaGithub/Linux-Clipboard.git
-cd Linux-Clipboard/work
+git clone https://github.com/HeyAtulVerma/MagicToys.git
+cd MagicToys/work
 cargo build --release
 ```
 

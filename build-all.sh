@@ -22,7 +22,7 @@ ARCH="amd64"
 ARCH_LINUX="x86_64"
 DESCRIPTION="MagicToys — Native Clipboard, Emoji, and OCR tools for Linux"
 MAINTAINER="ople.in <admin@ople.in>"
-HOMEPAGE="https://github.com"
+HOMEPAGE="https://magictoys.ople.in"
 LICENSE="MIT"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,8 +78,9 @@ build_deb() {
     install -dm755 "$PKG_DIR/etc/xdg/autostart"
     install -dm755 "$PKG_DIR/usr/lib/udev/rules.d"
 
-    # Binary & legacy symlink
+    # Binary & legacy symlinks
     install -m755 "$BINARY" "$PKG_DIR/usr/bin/$APP_NAME"
+    ln -sf "$APP_NAME" "$PKG_DIR/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$PKG_DIR/usr/bin/lincb.ople.in"
 
     # Icon
@@ -113,7 +114,7 @@ Version: ${VERSION}
 Architecture: amd64
 Maintainer: ${MAINTAINER}
 Installed-Size: ${INSTALLED_SIZE}
-Depends: libc6 (>= 2.17), libgtk-3-0, libglib2.0-0, libx11-6, libxtst6, xdotool, xclip, wl-clipboard, tesseract-ocr
+Depends: libc6 (>= 2.17), libgtk-3-0, libglib2.0-0, libx11-6, libxtst6, xdotool, xclip, tesseract-ocr
 Section: utils
 Priority: optional
 Homepage: ${HOMEPAGE}
@@ -175,6 +176,7 @@ build_arch() {
     install -dm755 "$STAGE/usr/lib/udev/rules.d"
 
     install -m755 "$BINARY" "$STAGE/usr/bin/$APP_NAME"
+    ln -sf "$APP_NAME" "$STAGE/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$STAGE/usr/bin/lincb.ople.in"
     install -m644 "$ICON"   "$STAGE/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
 
@@ -195,6 +197,14 @@ EOF
     echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' \
         > "$STAGE/usr/lib/udev/rules.d/99-magictoys-uinput.rules"
 
+    # Fix directory permissions so pacman emits ZERO 775 warnings
+    chmod 755 "$STAGE" "$STAGE/usr" "$STAGE/usr/bin" "$STAGE/usr/share" \
+              "$STAGE/usr/share/applications" "$STAGE/usr/share/icons" \
+              "$STAGE/usr/share/icons/hicolor" "$STAGE/usr/share/icons/hicolor/256x256" \
+              "$STAGE/usr/share/icons/hicolor/256x256/apps" "$STAGE/etc" \
+              "$STAGE/etc/xdg" "$STAGE/etc/xdg/autostart" "$STAGE/usr/lib" \
+              "$STAGE/usr/lib/udev" "$STAGE/usr/lib/udev/rules.d" 2>/dev/null || true
+
     INSTALLED_SIZE=$(du -sk "$STAGE" | cut -f1)
     cat > "$STAGE/.PKGINFO" << EOF
 pkgname = ${PKG_NAME}
@@ -210,6 +220,8 @@ depend = glib2
 depend = libx11
 depend = libxtst
 depend = xdotool
+depend = xclip
+depend = tesseract
 EOF
 
     local PKG_OUT_NAME="${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
@@ -240,6 +252,7 @@ build_rpm() {
     install -dm755 "$STAGE_DIR/usr/lib/udev/rules.d"
 
     install -m755 "$BINARY" "$STAGE_DIR/usr/bin/$APP_NAME"
+    ln -sf "$APP_NAME" "$STAGE_DIR/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$STAGE_DIR/usr/bin/lincb.ople.in"
     install -m644 "$ICON"   "$STAGE_DIR/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
 
@@ -258,6 +271,9 @@ EOF
     cp "$STAGE_DIR/usr/share/applications/${APP_NAME}.desktop" \
        "$STAGE_DIR/etc/xdg/autostart/${APP_NAME}.desktop"
 
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' \
+        > "$STAGE_DIR/usr/lib/udev/rules.d/99-magictoys-uinput.rules"
+
     cat > "$SPEC" << EOF
 Name:           ${PKG_NAME}
 Version:        ${VERSION}
@@ -272,9 +288,11 @@ Requires:       glib2
 Requires:       libX11
 Requires:       libXtst
 Requires:       xdotool
+Requires:       xclip
+Requires:       tesseract
 
 %description
-MagicToys is a fast, native clipboard history manager for Linux.
+MagicToys is a fast, native clipboard history, emoji picker, and OCR manager for Linux.
 
 %install
 rm -rf %{buildroot}
@@ -283,10 +301,12 @@ cp -a ${STAGE_DIR}/* %{buildroot}/
 
 %files
 /usr/bin/${APP_NAME}
+/usr/bin/MagicToys
 /usr/bin/lincb.ople.in
 /usr/share/applications/${APP_NAME}.desktop
 /usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png
 /etc/xdg/autostart/${APP_NAME}.desktop
+/usr/lib/udev/rules.d/99-magictoys-uinput.rules
 EOF
 
     if command -v rpmbuild &>/dev/null; then
@@ -321,6 +341,7 @@ build_appimage() {
 
     # Install files into AppDir
     install -m755 "$BINARY" "$APPDIR/usr/bin/$APP_NAME"
+    ln -sf "$APP_NAME" "$APPDIR/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$APPDIR/usr/bin/lincb.ople.in"
     install -m644 "$ICON"   "$APPDIR/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
     install -m644 "$ICON"   "$APPDIR/${APP_NAME}.png"
@@ -383,6 +404,7 @@ build_tarball() {
     mkdir -p "$TAR_STAGE"
 
     install -m755 "$BINARY" "$TAR_STAGE/$APP_NAME"
+    ln -sf "$APP_NAME" "$TAR_STAGE/MagicToys"
     install -m644 "$ICON"   "$TAR_STAGE/icon.png"
 
     cat > "$TAR_STAGE/install.sh" << 'EOF'
@@ -392,6 +414,7 @@ PREFIX="${PREFIX:-/usr/local}"
 echo "Installing MagicToys to $PREFIX..."
 install -dm755 "$PREFIX/bin"
 install -m755 magictoys "$PREFIX/bin/magictoys"
+ln -sf magictoys "$PREFIX/bin/MagicToys"
 ln -sf magictoys "$PREFIX/bin/lincb.ople.in"
 if [ -d "$PREFIX/share/applications" ]; then
     install -dm755 "$PREFIX/share/icons/hicolor/256x256/apps"
