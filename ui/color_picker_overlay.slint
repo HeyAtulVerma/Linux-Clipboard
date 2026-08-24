@@ -1,0 +1,193 @@
+// MagicToys — Windows 11 Style Color Picker Overlay
+// Fullscreen loupe overlay with real-time magnifying bubble following cursor, precision reticle, and live HEX indicator.
+
+export component ColorPickerOverlay inherits Window {
+    title: "MagicToys Color Picker";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+
+    // Callbacks
+    callback pointer-moved(length, length);
+    callback color-picked(float, float, float);
+    callback picker-cancelled();
+
+    // Properties updated by backend
+    in-out property <string> current-hex: "#000000";
+    in-out property <color> current-color: #000000;
+    in-out property <length> mouse-pos-x: 0px;
+    in-out property <length> mouse-pos-y: 0px;
+
+    // Keyboard listener for Escape key to cancel
+    forward-focus: key-handler;
+    key-handler := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.picker-cancelled();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+
+    // Top instruction banner
+    HorizontalLayout {
+        alignment: center;
+        y: 28px;
+        z: 100;
+
+        Rectangle {
+            height: 38px;
+            background: #1e1e1ef0;
+            border-radius: 19px;
+            border-width: 1px;
+            border-color: #ffffff2e;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000088;
+            drop-shadow-offset-y: 4px;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 10px;
+                alignment: center;
+
+                // Pipette / Dropper Icon
+                Text {
+                    text: "🖉";
+                    color: #60cdff;
+                    font-size: 15px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "Click any pixel to pick color";
+                    color: #f3f3f3;
+                    font-size: 13px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 14px;
+                    background: #ffffff33;
+                }
+
+                Text {
+                    text: "Esc to cancel";
+                    color: #a0a0a0;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // Floating Magnifying Loupe Bubble tracking cursor
+    // Positioned with smart offset so it stays on screen and doesn't obscure the target pixel
+    Rectangle {
+        x: min(max(10px, root.mouse-pos-x + 24px), parent.width - self.width - 10px);
+        y: min(max(10px, root.mouse-pos-y - 45px), parent.height - self.height - 10px);
+        width: 116px;
+        height: 116px;
+        z: 200;
+
+        // Circular glassmorphism container
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            border-radius: 58px;
+            background: #181818f4;
+            border-width: 2px;
+            border-color: #ffffff44;
+            drop-shadow-blur: 20px;
+            drop-shadow-color: #00000099;
+            drop-shadow-offset-y: 6px;
+            clip: true;
+
+            // Center large live color swatch inside loupe
+            Rectangle {
+                width: 76px;
+                height: 76px;
+                border-radius: 38px;
+                background: root.current-color;
+                border-width: 3px;
+                border-color: #ffffff99;
+
+                // Center Reticle Crosshair
+                Rectangle {
+                    width: 14px;
+                    height: 2px;
+                    background: #ffffffdd;
+                }
+                Rectangle {
+                    width: 2px;
+                    height: 14px;
+                    background: #ffffffdd;
+                }
+            }
+        }
+
+        // Live HEX Badge Pill attached below the loupe bubble
+        Rectangle {
+            y: parent.height + 6px;
+            x: (parent.width - self.width) / 2;
+            height: 24px;
+            background: #121212f8;
+            border-radius: 12px;
+            border-width: 1px;
+            border-color: #ffffff33;
+            drop-shadow-blur: 10px;
+            drop-shadow-color: #00000066;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 6px;
+                alignment: center;
+
+                // Small color dot
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: root.current-color;
+                    border-width: 1px;
+                    border-color: #ffffff55;
+                }
+
+                Text {
+                    text: root.current-hex;
+                    color: #ffffff;
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // Fullscreen Mouse/Touch Tracking Area
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: crosshair;
+
+        moved => {
+            root.mouse-pos-x = self.mouse-x;
+            root.mouse-pos-y = self.mouse-y;
+            root.pointer-moved(self.mouse-x, self.mouse-y);
+        }
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                let col = root.current-color;
+                root.color-picked(col.red * 255.0, col.green * 255.0, col.blue * 255.0);
+            } else if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                root.picker-cancelled();
+            }
+        }
+    }
+}
