@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================================
 # MagicToys - Multi-distro Release Build Script
-# Version: 0.0.3 (Beta)
+# Licensed under GNU General Public License v3.0 (GPL-3.0-or-later)
 # Produces: .deb, Arch .pkg.tar.zst, .rpm, .AppImage, .tar.gz, and SHA256SUMS
-# Output Location: work/releases/
+# Output Location: releases/
 # =============================================================================
 
 set -e
@@ -17,13 +17,13 @@ RESET='\033[0m'
 
 APP_NAME="magictoys"
 PKG_NAME="magictoys"
-VERSION="0.0.3"
+VERSION="0.0.4"
 ARCH="amd64"
 ARCH_LINUX="x86_64"
 DESCRIPTION="MagicToys — Native Clipboard, Emoji, and OCR tools for Linux"
-MAINTAINER="ople.in <admin@ople.in>"
-HOMEPAGE="https://magictoys.ople.in"
-LICENSE="MIT"
+MAINTAINER="MagicToys Contributors <admin@ople.in>"
+HOMEPAGE="https://github.com/HeyAtulVerma/MagicToys"
+LICENSE="GPL-3.0-or-later"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="$SCRIPT_DIR"
@@ -32,8 +32,8 @@ BUILD_CACHE="$WORK_DIR/.build_cache"
 BINARY="$WORK_DIR/target/release/$APP_NAME"
 ICON="$WORK_DIR/icon.png"
 
-# Clean and prepare output directories
-rm -rf "$RELEASES_DIR" "$BUILD_CACHE"
+# Clean and prepare output directories (preserve compiler cache)
+rm -rf "$RELEASES_DIR"
 mkdir -p "$RELEASES_DIR"
 mkdir -p "$BUILD_CACHE"
 mkdir -p "$WORK_DIR/target/release"
@@ -46,17 +46,25 @@ err()  { echo -e "${RED}  ✗${RESET} $*"; exit 1; }
 banner() {
     echo ""
     echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${CYAN}║  MagicToys – Release Builder v${VERSION}   ║${RESET}"
+    echo -e "${BOLD}${CYAN}║  MagicToys – Multi-Distro Builder v${VERSION}        ║${RESET}"
+    echo -e "${BOLD}${CYAN}║  Licensed under GNU GPL v3.0                     ║${RESET}"
     echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════╝${RESET}"
     echo ""
 }
 
 # ─── Step 0: Compile Release Binary ─────────────────────────────────────────
 compile() {
-    log "Compiling release binary..."
+    log "Compiling release binary with cross-distro GLIBC compatibility..."
     cd "$WORK_DIR"
-    cargo build --release
-    
+    export PATH="$BUILD_CACHE/zig:$HOME/.cargo/bin:$PATH"
+
+    if command -v cargo-zigbuild &>/dev/null && [ -x "$BUILD_CACHE/zig/zig" ]; then
+        cargo zigbuild --target x86_64-unknown-linux-gnu.2.31 --release
+        cp -f "$WORK_DIR/target/x86_64-unknown-linux-gnu/release/$APP_NAME" "$BINARY"
+    else
+        cargo build --release
+    fi
+
     if [ ! -f "$BINARY" ]; then
         err "Binary not found at $BINARY!"
     fi
@@ -64,7 +72,7 @@ compile() {
     ok "Binary compiled: $BINARY ($(du -sh "$BINARY" | cut -f1))"
 }
 
-# ─── Step 1: .deb Package (Debian / Ubuntu / Mint / Pop!_OS) ───────────────
+# ─── Step 1: .deb Package (Debian / Ubuntu / Mint / Pop!_OS / Zorin OS) ─────
 build_deb() {
     log "Building .deb package..."
     local PKG_DIR="$BUILD_CACHE/deb_${PKG_NAME}_${VERSION}_amd64"
@@ -75,6 +83,7 @@ build_deb() {
     install -dm755 "$PKG_DIR/usr/bin"
     install -dm755 "$PKG_DIR/usr/share/applications"
     install -dm755 "$PKG_DIR/usr/share/icons/hicolor/256x256/apps"
+    install -dm755 "$PKG_DIR/usr/share/pixmaps"
     install -dm755 "$PKG_DIR/etc/xdg/autostart"
     install -dm755 "$PKG_DIR/usr/lib/udev/rules.d"
 
@@ -82,9 +91,11 @@ build_deb() {
     install -m755 "$BINARY" "$PKG_DIR/usr/bin/$APP_NAME"
     ln -sf "$APP_NAME" "$PKG_DIR/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$PKG_DIR/usr/bin/lincb.ople.in"
+    ln -sf "$APP_NAME" "$PKG_DIR/usr/bin/linux-clipboard"
 
-    # Icon
+    # Icons
     install -m644 "$ICON" "$PKG_DIR/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+    install -m644 "$ICON" "$PKG_DIR/usr/share/pixmaps/${APP_NAME}.png"
 
     # Desktop file
     cat > "$PKG_DIR/usr/share/applications/${APP_NAME}.desktop" << EOF
@@ -96,8 +107,10 @@ Icon=${APP_NAME}
 Terminal=false
 Type=Application
 Categories=Utility;
-StartupNotify=false
+StartupNotify=true
 StartupWMClass=magictoys
+X-GNOME-UsesNotifications=true
+SingleMainWindow=true
 EOF
     cp "$PKG_DIR/usr/share/applications/${APP_NAME}.desktop" \
        "$PKG_DIR/etc/xdg/autostart/${APP_NAME}.desktop"
@@ -114,12 +127,14 @@ Version: ${VERSION}
 Architecture: amd64
 Maintainer: ${MAINTAINER}
 Installed-Size: ${INSTALLED_SIZE}
-Depends: libc6 (>= 2.17), libgtk-3-0, libglib2.0-0, libx11-6, libxtst6, xdotool, xclip, tesseract-ocr
+Depends: tesseract-ocr, tesseract-ocr-eng, xdg-desktop-portal
+Recommends: wl-clipboard, xclip, wtype, maim, scrot, gnome-shell-extension-appindicator
 Section: utils
 Priority: optional
 Homepage: ${HOMEPAGE}
 Description: ${DESCRIPTION}
- MagicToys is a fast, native clipboard history, emoji picker, and OCR manager for Linux.
+ MagicToys is a fast, native, lightweight clipboard history manager,
+ emoji picker, and screen OCR text extractor for Linux desktops.
 EOF
 
     # DEBIAN/postinst
@@ -130,20 +145,14 @@ if [ "$1" = "configure" ]; then
     modprobe uinput 2>/dev/null || true
     udevadm control --reload-rules 2>/dev/null || true
     udevadm trigger 2>/dev/null || true
-
-    # Automatically launch MagicToys for the active desktop user right after installation
-    if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
-        USER_ID=$(id -u "$SUDO_USER" 2>/dev/null || true)
-        if [ -n "$USER_ID" ]; then
-            su - "$SUDO_USER" -c "DISPLAY=${DISPLAY:-:0} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/$USER_ID /usr/bin/magictoys >/dev/null 2>&1 &" || true
-        fi
-    fi
 fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
 fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
 EOF
-
     chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
     # DEBIAN/prerm
@@ -154,9 +163,21 @@ pkill -x "magictoys" 2>/dev/null || true
 EOF
     chmod 755 "$PKG_DIR/DEBIAN/prerm"
 
-    # Build the .deb output in RELEASES_DIR directly
     local OUT="$RELEASES_DIR/${PKG_NAME}_${VERSION}_amd64.deb"
-    fakeroot dpkg-deb --build "$PKG_DIR" "$OUT"
+
+    if command -v dpkg-deb >/dev/null 2>&1; then
+        fakeroot dpkg-deb --build "$PKG_DIR" "$OUT" >/dev/null 2>&1 || dpkg-deb --build "$PKG_DIR" "$OUT"
+    else
+        # Standalone POSIX .deb packaging using tar + ar (works on any Linux distro)
+        local DEB_TMP="$BUILD_CACHE/deb_stage"
+        rm -rf "$DEB_TMP"
+        mkdir -p "$DEB_TMP"
+        echo "2.0" > "$DEB_TMP/debian-binary"
+        (cd "$PKG_DIR/DEBIAN" && tar -czf "$DEB_TMP/control.tar.gz" ./*)
+        (cd "$PKG_DIR" && tar --exclude='./DEBIAN' -czf "$DEB_TMP/data.tar.gz" ./usr ./etc 2>/dev/null || tar -czf "$DEB_TMP/data.tar.gz" usr etc)
+        (cd "$DEB_TMP" && ar rcs "$OUT" debian-binary control.tar.gz data.tar.gz)
+    fi
+
     ok "DEB package: $OUT ($(du -sh "$OUT" | cut -f1))"
 }
 
@@ -172,13 +193,16 @@ build_arch() {
     install -dm755 "$STAGE/usr/bin"
     install -dm755 "$STAGE/usr/share/applications"
     install -dm755 "$STAGE/usr/share/icons/hicolor/256x256/apps"
+    install -dm755 "$STAGE/usr/share/pixmaps"
     install -dm755 "$STAGE/etc/xdg/autostart"
     install -dm755 "$STAGE/usr/lib/udev/rules.d"
 
     install -m755 "$BINARY" "$STAGE/usr/bin/$APP_NAME"
     ln -sf "$APP_NAME" "$STAGE/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$STAGE/usr/bin/lincb.ople.in"
+    ln -sf "$APP_NAME" "$STAGE/usr/bin/linux-clipboard"
     install -m644 "$ICON"   "$STAGE/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+    install -m644 "$ICON"   "$STAGE/usr/share/pixmaps/${APP_NAME}.png"
 
     cat > "$STAGE/usr/share/applications/${APP_NAME}.desktop" << EOF
 [Desktop Entry]
@@ -189,39 +213,43 @@ Icon=${APP_NAME}
 Terminal=false
 Type=Application
 Categories=Utility;
-StartupNotify=false
+StartupNotify=true
 StartupWMClass=magictoys
+X-GNOME-UsesNotifications=true
+SingleMainWindow=true
 EOF
     cp "$STAGE/usr/share/applications/${APP_NAME}.desktop" \
        "$STAGE/etc/xdg/autostart/${APP_NAME}.desktop"
-    echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' \
+    echo 'KERNEL=="uinput", MODE="0666", TAG+="uaccess"' \
         > "$STAGE/usr/lib/udev/rules.d/99-magictoys-uinput.rules"
 
-    # Fix directory permissions so pacman emits ZERO 775 warnings
     chmod 755 "$STAGE" "$STAGE/usr" "$STAGE/usr/bin" "$STAGE/usr/share" \
               "$STAGE/usr/share/applications" "$STAGE/usr/share/icons" \
               "$STAGE/usr/share/icons/hicolor" "$STAGE/usr/share/icons/hicolor/256x256" \
-              "$STAGE/usr/share/icons/hicolor/256x256/apps" "$STAGE/etc" \
-              "$STAGE/etc/xdg" "$STAGE/etc/xdg/autostart" "$STAGE/usr/lib" \
+              "$STAGE/usr/share/icons/hicolor/256x256/apps" "$STAGE/usr/share/pixmaps" \
+              "$STAGE/etc" "$STAGE/etc/xdg" "$STAGE/etc/xdg/autostart" "$STAGE/usr/lib" \
               "$STAGE/usr/lib/udev" "$STAGE/usr/lib/udev/rules.d" 2>/dev/null || true
 
     INSTALLED_SIZE=$(du -sk "$STAGE" | cut -f1)
     cat > "$STAGE/.PKGINFO" << EOF
 pkgname = ${PKG_NAME}
 pkgver = ${VERSION}-1
-arch = x86_64
 pkgdesc = ${DESCRIPTION}
 url = ${HOMEPAGE}
 builddate = $(date +%s)
 packager = ${MAINTAINER}
 size = $((INSTALLED_SIZE * 1024))
-depend = gtk3
-depend = glib2
-depend = libx11
-depend = libxtst
-depend = xdotool
-depend = xclip
+arch = x86_64
+license = ${LICENSE}
 depend = tesseract
+depend = tesseract-data-eng
+depend = xdg-desktop-portal
+optdepend = maim: X11 screen region capture
+optdepend = grim: Wayland screen capture
+optdepend = slurp: Wayland region selection
+optdepend = wl-clipboard: Wayland clipboard access
+optdepend = xclip: X11 clipboard access
+optdepend = wtype: Wayland keystroke simulation
 EOF
 
     local PKG_OUT_NAME="${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
@@ -248,13 +276,16 @@ build_rpm() {
     install -dm755 "$STAGE_DIR/usr/bin"
     install -dm755 "$STAGE_DIR/usr/share/applications"
     install -dm755 "$STAGE_DIR/usr/share/icons/hicolor/256x256/apps"
+    install -dm755 "$STAGE_DIR/usr/share/pixmaps"
     install -dm755 "$STAGE_DIR/etc/xdg/autostart"
     install -dm755 "$STAGE_DIR/usr/lib/udev/rules.d"
 
     install -m755 "$BINARY" "$STAGE_DIR/usr/bin/$APP_NAME"
     ln -sf "$APP_NAME" "$STAGE_DIR/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$STAGE_DIR/usr/bin/lincb.ople.in"
+    ln -sf "$APP_NAME" "$STAGE_DIR/usr/bin/linux-clipboard"
     install -m644 "$ICON"   "$STAGE_DIR/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+    install -m644 "$ICON"   "$STAGE_DIR/usr/share/pixmaps/${APP_NAME}.png"
 
     cat > "$STAGE_DIR/usr/share/applications/${APP_NAME}.desktop" << EOF
 [Desktop Entry]
@@ -265,13 +296,15 @@ Icon=${APP_NAME}
 Terminal=false
 Type=Application
 Categories=Utility;
-StartupNotify=false
+StartupNotify=true
 StartupWMClass=magictoys
+X-GNOME-UsesNotifications=true
+SingleMainWindow=true
 EOF
     cp "$STAGE_DIR/usr/share/applications/${APP_NAME}.desktop" \
        "$STAGE_DIR/etc/xdg/autostart/${APP_NAME}.desktop"
 
-    echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' \
+    echo 'KERNEL=="uinput", MODE="0666", TAG+="uaccess"' \
         > "$STAGE_DIR/usr/lib/udev/rules.d/99-magictoys-uinput.rules"
 
     cat > "$SPEC" << EOF
@@ -283,16 +316,21 @@ License:        ${LICENSE}
 URL:            ${HOMEPAGE}
 BuildArch:      x86_64
 
-Requires:       gtk3
-Requires:       glib2
-Requires:       libX11
-Requires:       libXtst
-Requires:       xdotool
-Requires:       xclip
 Requires:       tesseract
+Requires:       tesseract-langpack-eng
+Requires:       xdg-desktop-portal
+Recommends:     maim
+Recommends:     scrot
+Recommends:     grim
+Recommends:     slurp
+Recommends:     wl-clipboard
+Recommends:     xclip
+Recommends:     wtype
+Recommends:     gnome-shell-extension-appindicator
 
 %description
-MagicToys is a fast, native clipboard history, emoji picker, and OCR manager for Linux.
+MagicToys is a fast, native, lightweight clipboard history manager,
+emoji picker, and screen OCR text extractor for Linux desktops.
 
 %install
 rm -rf %{buildroot}
@@ -303,8 +341,10 @@ cp -a ${STAGE_DIR}/* %{buildroot}/
 /usr/bin/${APP_NAME}
 /usr/bin/MagicToys
 /usr/bin/lincb.ople.in
+/usr/bin/linux-clipboard
 /usr/share/applications/${APP_NAME}.desktop
 /usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png
+/usr/share/pixmaps/${APP_NAME}.png
 /etc/xdg/autostart/${APP_NAME}.desktop
 /usr/lib/udev/rules.d/99-magictoys-uinput.rules
 EOF
@@ -316,14 +356,14 @@ EOF
                  --define "_srcrpmdir $RPM_DIR/SRPMS" \
                  --define "_buildrootdir $RPM_DIR/BUILDROOT" \
                  --nodeps \
-                 -bb "$SPEC" &>/dev/null || true
+                 -bb "$SPEC" &>/dev/null || rpmbuild --define "_topdir $RPM_DIR" --nodeps -bb "$SPEC"
         
         local RPM_FILE=$(find "$RPM_DIR/RPMS" -name "*.rpm" | head -n 1)
         if [ -n "$RPM_FILE" ]; then
             cp -f "$RPM_FILE" "$RELEASES_DIR/${PKG_NAME}-${VERSION}-1.x86_64.rpm"
             ok "RPM package: $RELEASES_DIR/${PKG_NAME}-${VERSION}-1.x86_64.rpm ($(du -sh "$RELEASES_DIR/${PKG_NAME}-${VERSION}-1.x86_64.rpm" | cut -f1))"
         else
-            warn "rpmbuild ran but no RPM generated."
+            warn "rpmbuild ran but no RPM file was produced."
         fi
     else
         warn "rpmbuild not found — skipped RPM build."
@@ -337,13 +377,16 @@ build_appimage() {
     rm -rf "$APPDIR"
     mkdir -p "$APPDIR/usr/bin"
     mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+    mkdir -p "$APPDIR/usr/share/pixmaps"
     mkdir -p "$APPDIR/usr/share/applications"
 
     # Install files into AppDir
     install -m755 "$BINARY" "$APPDIR/usr/bin/$APP_NAME"
     ln -sf "$APP_NAME" "$APPDIR/usr/bin/MagicToys"
     ln -sf "$APP_NAME" "$APPDIR/usr/bin/lincb.ople.in"
+    ln -sf "$APP_NAME" "$APPDIR/usr/bin/linux-clipboard"
     install -m644 "$ICON"   "$APPDIR/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
+    install -m644 "$ICON"   "$APPDIR/usr/share/pixmaps/${APP_NAME}.png"
     install -m644 "$ICON"   "$APPDIR/${APP_NAME}.png"
 
     cat > "$APPDIR/${APP_NAME}.desktop" << EOF
@@ -355,8 +398,10 @@ Icon=${APP_NAME}
 Terminal=false
 Type=Application
 Categories=Utility;
-StartupNotify=false
+StartupNotify=true
 StartupWMClass=magictoys
+X-GNOME-UsesNotifications=true
+SingleMainWindow=true
 EOF
     cp "$APPDIR/${APP_NAME}.desktop" "$APPDIR/usr/share/applications/${APP_NAME}.desktop"
 
@@ -370,15 +415,16 @@ exec "$HERE/usr/bin/magictoys" "$@"
 EOF
     chmod +x "$APPDIR/AppRun"
 
-    # Check for appimagetool or download continuous release if missing
+    # Check for appimagetool or download if missing
     local TOOL=""
     if command -v appimagetool &>/dev/null; then
         TOOL="appimagetool"
     elif [ -f "$BUILD_CACHE/appimagetool" ]; then
         TOOL="$BUILD_CACHE/appimagetool"
     else
-        log "Downloading appimagetool for AppImage compilation..."
-        if wget -q -O "$BUILD_CACHE/appimagetool" "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" 2>/dev/null; then
+        log "Downloading appimagetool..."
+        if wget -q -O "$BUILD_CACHE/appimagetool" "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" 2>/dev/null || \
+           curl -sSL -o "$BUILD_CACHE/appimagetool" "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" 2>/dev/null; then
             chmod +x "$BUILD_CACHE/appimagetool"
             TOOL="$BUILD_CACHE/appimagetool"
         fi
@@ -392,7 +438,10 @@ EOF
     if [ -f "$OUT_APPIMAGE" ]; then
         ok "AppImage package: $OUT_APPIMAGE ($(du -sh "$OUT_APPIMAGE" | cut -f1))"
     else
-        warn "AppImage compilation skipped or missing appimagetool dependencies."
+        # Create self-contained portable directory bundle as AppImage fallback
+        local APPDIR_TAR="$RELEASES_DIR/MagicToys-${VERSION}-x86_64-AppDir.tar.gz"
+        (cd "$BUILD_CACHE" && tar -czf "$APPDIR_TAR" AppDir)
+        ok "Portable AppDir bundle: $APPDIR_TAR ($(du -sh "$APPDIR_TAR" | cut -f1))"
     fi
 }
 
@@ -405,22 +454,46 @@ build_tarball() {
 
     install -m755 "$BINARY" "$TAR_STAGE/$APP_NAME"
     ln -sf "$APP_NAME" "$TAR_STAGE/MagicToys"
+    ln -sf "$APP_NAME" "$TAR_STAGE/lincb.ople.in"
+    ln -sf "$APP_NAME" "$TAR_STAGE/linux-clipboard"
     install -m644 "$ICON"   "$TAR_STAGE/icon.png"
 
     cat > "$TAR_STAGE/install.sh" << 'EOF'
 #!/bin/bash
 set -e
 PREFIX="${PREFIX:-/usr/local}"
-echo "Installing MagicToys to $PREFIX..."
-install -dm755 "$PREFIX/bin"
-install -m755 magictoys "$PREFIX/bin/magictoys"
-ln -sf magictoys "$PREFIX/bin/MagicToys"
-ln -sf magictoys "$PREFIX/bin/lincb.ople.in"
-if [ -d "$PREFIX/share/applications" ]; then
-    install -dm755 "$PREFIX/share/icons/hicolor/256x256/apps"
-    install -m644 icon.png "$PREFIX/share/icons/hicolor/256x256/apps/magictoys.png"
+DESTDIR="${DESTDIR:-}"
+
+echo "Installing MagicToys to ${DESTDIR}${PREFIX}..."
+install -dm755 "${DESTDIR}${PREFIX}/bin"
+install -m755 magictoys "${DESTDIR}${PREFIX}/bin/magictoys"
+ln -sf magictoys "${DESTDIR}${PREFIX}/bin/MagicToys"
+ln -sf magictoys "${DESTDIR}${PREFIX}/bin/lincb.ople.in"
+ln -sf magictoys "${DESTDIR}${PREFIX}/bin/linux-clipboard"
+
+if [ -d "${DESTDIR}${PREFIX}/share" ]; then
+    install -dm755 "${DESTDIR}${PREFIX}/share/icons/hicolor/256x256/apps"
+    install -m644 icon.png "${DESTDIR}${PREFIX}/share/icons/hicolor/256x256/apps/magictoys.png"
+    install -dm755 "${DESTDIR}${PREFIX}/share/pixmaps"
+    install -m644 icon.png "${DESTDIR}${PREFIX}/share/pixmaps/magictoys.png"
+    install -dm755 "${DESTDIR}${PREFIX}/share/applications"
+    cat > "${DESTDIR}${PREFIX}/share/applications/magictoys.desktop" << 'DESK'
+[Desktop Entry]
+Name=MagicToys
+Comment=Native clipboard, emoji, and OCR tools for Linux
+Exec=magictoys
+Icon=magictoys
+Terminal=false
+Type=Application
+Categories=Utility;Productivity;
+StartupNotify=true
+StartupWMClass=magictoys
+X-GNOME-UsesNotifications=true
+SingleMainWindow=true
+DESK
 fi
-echo "MagicToys installed successfully!"
+
+echo "✓ MagicToys installed successfully!"
 EOF
     chmod +x "$TAR_STAGE/install.sh"
 

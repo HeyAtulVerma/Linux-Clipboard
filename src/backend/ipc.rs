@@ -13,13 +13,13 @@ use slint::ComponentHandle;
 pub async fn handle_single_instance(sock_path: &Path, args: &[String]) -> Result<bool, Box<dyn std::error::Error>> {
     if sock_path.exists() {
         if let Ok(mut stream) = UnixStream::connect(sock_path).await {
-            let cmd = if args.contains(&"--emoji".to_string()) {
+            let cmd = if args.iter().any(|a| a == "--emoji" || a == "-e") {
                 "emoji"
-            } else if args.contains(&"--ocr".to_string()) {
+            } else if args.iter().any(|a| a == "--ocr" || a == "-o" || a == "--grab") {
                 "ocr"
-            } else if args.contains(&"--toggle".to_string()) {
+            } else if args.iter().any(|a| a == "--toggle" || a == "-t" || a == "-c" || a == "--clipboard") {
                 "toggle"
-            } else if args.contains(&"--background".to_string()) {
+            } else if args.iter().any(|a| a == "--background" || a == "-b") {
                 "background"
             } else {
                 "settings"

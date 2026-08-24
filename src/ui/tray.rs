@@ -1,60 +1,117 @@
-//! System Tray Icon and Context Menu setup
+//! System Tray Icon and Context Menu setup using pure Rust Freedesktop StatusNotifierItem (ksni)
+//! Works across KDE, GNOME (AppIndicator), Hyprland (Waybar), Sway, and XFCE without C dependencies.
 
-use tray_icon::{
-    menu::{Menu, MenuItem},
-    Icon, TrayIcon, TrayIconBuilder,
-};
+use ksni::{Tray, MenuItem};
+use ksni::menu::StandardItem;
+use slint::ComponentHandle;
+use std::sync::Arc;
+use parking_lot::Mutex;
+use rusqlite::Connection;
 
-/// Setup the system tray icon and menu
-pub fn setup_tray() -> Result<TrayIcon, Box<dyn std::error::Error>> {
-    let menu = Menu::new();
-    let show_item = MenuItem::new("Show History", true, None);
-    let settings_item = MenuItem::new("Settings", true, None);
-    let quit_item = MenuItem::new("Quit", true, None);
+pub struct MagicToysTray {
+    pub app_weak: slint::Weak<crate::AppWindow>,
+    pub db: Arc<Mutex<Connection>>,
+}
 
-    menu.append(&show_item)?;
-    menu.append(&settings_item)?;
-    menu.append(&quit_item)?;
-
-    // Dynamically create a 16x16 blue/white clipboard symbol icon in memory
-    let mut pixels = vec![0u8; 16 * 16 * 4];
-    for y in 0..16 {
-        for x in 0..16 {
-            let idx = (y * 16 + x) * 4;
-            // Draw a basic bordered square in blue
-            if x == 0 || x == 15 || y == 0 || y == 15 {
-                pixels[idx] = 0;     // R
-                pixels[idx + 1] = 120; // G
-                pixels[idx + 2] = 212; // B
-                pixels[idx + 3] = 255; // A
-            } else if y >= 4 && y <= 12 && x >= 4 && x <= 11 {
-                // Clipboard sheet (white)
-                pixels[idx] = 255;
-                pixels[idx + 1] = 255;
-                pixels[idx + 2] = 255;
-                pixels[idx + 3] = 255;
-            } else if y >= 2 && y <= 3 && x >= 6 && x <= 9 {
-                // Clip (grey)
-                pixels[idx] = 150;
-                pixels[idx + 1] = 150;
-                pixels[idx + 2] = 150;
-                pixels[idx + 3] = 255;
-            } else {
-                // Transparent background
-                pixels[idx + 3] = 0;
-            }
-        }
+impl Tray for MagicToysTray {
+    fn id(&self) -> String {
+        "magictoys".into()
     }
 
-    let icon = Icon::from_rgba(pixels, 16, 16)?;
+    fn title(&self) -> String {
+        "MagicToys".into()
+    }
 
-    let tray_icon = TrayIconBuilder::new()
-        .with_menu(Box::new(menu))
-        .with_tooltip("MagicToys")
+    fn icon_name(&self) -> String {
+        "magictoys".into()
+    }
 
-        .with_icon(icon)
-        .build()?;
+    fn menu(&self) -> Vec<MenuItem<Self>> {
+        vec![
+            StandardItem {
+                label: "Clipboard History (Alt+V)".into(),
+                activate: Box::new(|this: &mut Self| {
+                    let app_weak = this.app_weak.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_active_tab(0);
+                            app.set_search_placeholder("Search history...".into());
+                            app.set_selected_index(0);
+                            crate::backend::simulator::save_focused_window();
+                            crate::ui::window::position_window(&app);
+                            let _ = app.window().show();
+                        }
+                    });
+                }),
+                ..Default::default()
+            }.into(),
+            StandardItem {
+                label: "Emoji Picker (Alt+.)".into(),
+                activate: Box::new(|this: &mut Self| {
+                    let app_weak = this.app_weak.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_active_tab(1);
+                            app.set_search_placeholder("Search emojis...".into());
+                            app.set_selected_index(0);
+                            crate::backend::simulator::save_focused_window();
+                            crate::ui::window::position_window(&app);
+                            let _ = app.window().show();
+                        }
+                    });
+                }),
+                ..Default::default()
+            }.into(),
+            StandardItem {
+                label: "Screen OCR Grab (Alt+Shift+T)".into(),
+                activate: Box::new(|this: &mut Self| {
+                    let db = this.db.clone();
+                    let app_weak = this.app_weak.clone();
+                    crate::backend::ocr::run_ocr_capture_and_ingest(db, app_weak);
+                }),
+                ..Default::default()
+            }.into(),
+            MenuItem::Separator,
+            StandardItem {
+                label: "Settings".into(),
+                activate: Box::new(|this: &mut Self| {
+                    let app_weak = this.app_weak.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = app_weak.upgrade() {
+                            app.invoke_open_preferences();
+                        }
+                    });
+                }),
+                ..Default::default()
+            }.into(),
+            MenuItem::Separator,
+            StandardItem {
+                label: "Quit".into(),
+                activate: Box::new(|_this: &mut Self| {
+                    std::process::exit(0);
+                }),
+                ..Default::default()
+            }.into(),
+        ]
+    }
+}
 
-
-    Ok(tray_icon)
+/// Setup the pure-Rust system tray icon and menu, entering Tokio context to prevent zbus reactor panics
+pub fn setup_tray(
+    app_weak: slint::Weak<crate::AppWindow>,
+    db: Arc<Mutex<Connection>>,
+) -> Option<ksni::Handle<MagicToysTray>> {
+    let service = ksni::TrayService::new(MagicToysTray { app_weak, db });
+    let handle = service.handle();
+    
+    if let Ok(tokio_handle) = tokio::runtime::Handle::try_current() {
+        std::thread::spawn(move || {
+            let _guard = tokio_handle.enter();
+            let _ = service.run();
+        });
+    } else {
+        service.spawn();
+    }
+    
+    Some(handle)
 }

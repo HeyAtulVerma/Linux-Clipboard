@@ -7,12 +7,17 @@ import { SlintClipItem, SlintEmojiItem, SlintEmojiRow } from "./types.slint";
 import { HistoryCard } from "./history_card.slint";
 import { EmojiPanel } from "./emoji_panel.slint";
 import { MainWindow } from "./main_window.slint";
+import { SnippingOverlay } from "./snipping_overlay.slint";
 
-export { MainWindow }
+export { MainWindow, SnippingOverlay }
 
 export component AppWindow inherits Window {
     title: "MagicToys";
+    icon: @image-url("../icon.png");
 
+
+    default-font-family: "Cantarell, Inter, Roboto, 'Noto Sans', Ubuntu, sans-serif";
+    default-font-size: 14px;
 
     width: 360px;
     height: 480px;
@@ -53,15 +58,15 @@ export component AppWindow inherits Window {
     in-out property <string> theme-mode: "system";
     in-out property <string> accent-hex: "#f97316";
 
-    // Design tokens — matches MagicToys palette
-    property <color> bg-color:      is-dark ? #0f0f0f : #f5f5f5;
-    property <color> border-color:  is-dark ? #1f1f1f : #e0e0e0;
-    property <color> text-color:    is-dark ? #f5f5f5 : #111111;
-    property <color> text-secondary: is-dark ? #737373 : #737373;
-    property <color> card-bg:       is-dark ? #161616 : #ffffff;
-    property <color> card-hover-bg: is-dark ? #1e1e1e : #f0f0f0;
+    // Design tokens — high-contrast crisp palette
+    property <color> bg-color:      is-dark ? #121212 : #f8f9fa;
+    property <color> border-color:  is-dark ? #282828 : #e2e8f0;
+    property <color> text-color:    is-dark ? #ffffff : #0f172a;
+    property <color> text-secondary: is-dark ? #94a3b8 : #64748b;
+    property <color> card-bg:       is-dark ? #1c1c1c : #ffffff;
+    property <color> card-hover-bg: is-dark ? #262626 : #f1f5f9;
     property <color> pinned-color:  is-dark ? #f97316 : #ea580c;
-    property <color> pinned-bg:     is-dark ? rgba(249, 115, 22, 0.08) : rgba(249, 115, 22, 0.06);
+    property <color> pinned-bg:     is-dark ? rgba(249, 115, 22, 0.12) : rgba(249, 115, 22, 0.08);
 
     // Accent — resolved from stored hex
     property <color> accent: accent-hex == "#f97316" ? #f97316
@@ -114,7 +119,6 @@ export component AppWindow inherits Window {
             border-radius: 10px;
             border-width: 1px;
             border-color: border-color;
-            clip: true;
 
             VerticalLayout {
                 padding: 10px;

@@ -1,11 +1,11 @@
-//! Main entry point for the linux-clipboard application.
+//! Main entry point for the MagicToys application.
 //! Sets up the Tokio runtime, handles single-instance check, initializes SQLite,
 //! starts the clipboard watcher, and runs the Slint GUI event loop.
 
 slint::include_modules!();
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use parking_lot::Mutex;
@@ -22,51 +22,134 @@ use backend::ipc::{handle_single_instance, spawn_ipc_listener};
 use ui::helpers::{refresh_clips, refresh_emojis};
 
 const APP_NAME: &str = "magictoys";
+const ICON_PNG_BYTES: &[u8] = include_bytes!("../icon.png");
 
 /// Helper to resolve configurations directory
 fn get_config_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(APP_NAME)
+    let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    let target = base.join(APP_NAME);
+    let legacy = base.join("lincb.ople.in");
+
+    // Auto-migrate legacy directory if exists
+    if !target.exists() && legacy.exists() {
+        let _ = fs::create_dir_all(&target);
+        if let Ok(entries) = fs::read_dir(&legacy) {
+            for entry in entries.flatten() {
+                let dest = target.join(entry.file_name());
+                let _ = fs::copy(entry.path(), dest);
+            }
+        }
+    }
+
+    target
+}
+
+/// Ensures desktop entry, icons, and autostart launchers are clean without duplicate entries.
+fn ensure_desktop_integration(exe_path: &Path) {
+    if let Some(home) = dirs::home_dir() {
+        let local_bin = home.join(".local").join("bin");
+        let _ = fs::create_dir_all(&local_bin);
+        for name in &["magictoys", "MagicToys", "lincb.ople.in"] {
+            let symlink_path = local_bin.join(name);
+            if !symlink_path.exists() || fs::read_link(&symlink_path).map(|p| p != exe_path).unwrap_or(true) {
+                let _ = fs::remove_file(&symlink_path);
+                #[cfg(unix)]
+                let _ = std::os::unix::fs::symlink(exe_path, &symlink_path);
+            }
+        }
+
+        let apps_dir = home.join(".local").join("share").join("applications");
+        let _ = fs::create_dir_all(&apps_dir);
+
+        // Remove any obsolete or duplicate desktop entries that cause dual icons
+        for old_entry in &["MagicToys.desktop", "lincb.ople.in.desktop", "linux-clipboard.desktop"] {
+            let _ = fs::remove_file(apps_dir.join(old_entry));
+        }
+
+        // Install icon to user hicolor and pixmaps
+        let icon_dir = home.join(".local").join("share").join("icons").join("hicolor").join("256x256").join("apps");
+        let pixmap_dir = home.join(".local").join("share").join("pixmaps");
+        let _ = fs::create_dir_all(&icon_dir);
+        let _ = fs::create_dir_all(&pixmap_dir);
+        let _ = fs::write(icon_dir.join("magictoys.png"), ICON_PNG_BYTES);
+        let _ = fs::write(pixmap_dir.join("magictoys.png"), ICON_PNG_BYTES);
+
+        // Check if system-wide desktop file is already installed
+        let system_desktop_installed = Path::new("/usr/share/applications/magictoys.desktop").exists()
+            || Path::new("/usr/local/share/applications/magictoys.desktop").exists();
+
+        if system_desktop_installed {
+            // Remove user-level desktop file so there is strictly ONE application entry
+            let _ = fs::remove_file(apps_dir.join("magictoys.desktop"));
+        } else {
+            let desktop_content = format!(
+                "[Desktop Entry]\n\
+Name=MagicToys\n\
+Comment=Native clipboard, emoji, and OCR tools for Linux\n\
+Exec={}\n\
+Icon=magictoys\n\
+Terminal=false\n\
+Type=Application\n\
+Categories=Utility;\n\
+StartupNotify=true\n\
+StartupWMClass=magictoys\n\
+X-GNOME-UsesNotifications=true\n\
+SingleMainWindow=true\n",
+                exe_path.display()
+            );
+            let _ = fs::write(apps_dir.join("magictoys.desktop"), desktop_content);
+        }
+
+        // Install ~/.config/autostart/magictoys.desktop
+        let autostart_dir = home.join(".config").join("autostart");
+        let _ = fs::create_dir_all(&autostart_dir);
+        let autostart_content = format!(
+            "[Desktop Entry]\n\
+Name=MagicToys\n\
+Comment=Native clipboard, emoji, and OCR tools for Linux\n\
+Exec={} --background\n\
+Icon=magictoys\n\
+Terminal=false\n\
+Type=Application\n\
+Categories=Utility;\n\
+StartupNotify=false\n\
+StartupWMClass=magictoys\n\
+X-GNOME-Autostart-enabled=true\n",
+            exe_path.display()
+        );
+        let _ = fs::write(autostart_dir.join("magictoys.desktop"), autostart_content);
+
+        // Clean up any stale user icon-theme.cache that might shadow the system /usr/share/icons/hicolor cache
+        let _ = fs::remove_file(home.join(".local").join("share").join("icons").join("hicolor").join("icon-theme.cache"));
+
+        // Refresh user desktop database
+        let _ = std::process::Command::new("update-desktop-database").arg(&apps_dir).status();
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "-v" || a == "-V" || a == "--version") {
+        println!("MagicToys v0.0.4");
+        return Ok(());
+    }
+
     let config_dir = get_config_dir();
+    fs::create_dir_all(&config_dir).ok();
     let sock_path = config_dir.join("ipc.sock");
 
-    // Single-instance check
+    // Single-instance check: forwards command to running instance if one exists
     if handle_single_instance(&sock_path, &args).await? {
         return Ok(());
     }
 
-    // Initialize GTK for the system tray
-    gtk::init().ok();
-
-    // Suppress deprecated libayatana-appindicator warning
-    gtk::glib::log_set_default_handler(|domain, level, message| {
-        if message.contains("libayatana-appindicator is deprecated") {
-            return;
-        }
-        let level_str = match level {
-            gtk::glib::LogLevel::Error => "ERROR",
-            gtk::glib::LogLevel::Critical => "CRITICAL",
-            gtk::glib::LogLevel::Warning => "WARNING",
-            gtk::glib::LogLevel::Message => "MESSAGE",
-            gtk::glib::LogLevel::Info => "INFO",
-            gtk::glib::LogLevel::Debug => "DEBUG",
-        };
-        eprintln!("({}:{}): {} **: {}", domain.unwrap_or("GLib"), level_str, level_str.to_lowercase(), message);
-    });
-
     // Initialize input simulation device (Wayland uinput or X11)
     if let Err(e) = backend::simulator::init_simulator() {
-        eprintln!("[Main] Simulator initialization warning: {}", e);
+        eprintln!("[Main] Simulator initialization notice: {}", e);
     }
 
     // Set up configs
-    fs::create_dir_all(&config_dir).ok();
     let config_manager = Arc::new(config::UserSettingsManager::new());
     let settings = config_manager.load();
 
@@ -74,35 +157,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = config_dir.join("db.db");
     let conn = Arc::new(Mutex::new(backend::db::init_db(&db_path)?));
 
-    // Ensure ~/.local/bin/magictoys symlink exists for DE hotkeys
+    // Ensure desktop entry and binary symlinks are registered
     if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(home) = dirs::home_dir() {
-            let local_bin = home.join(".local").join("bin");
-            let _ = fs::create_dir_all(&local_bin);
-            for name in &["magictoys", "lincb.ople.in"] {
-                let symlink_path = local_bin.join(name);
-                if !symlink_path.exists() || fs::read_link(&symlink_path).map(|p| p != exe_path).unwrap_or(true) {
-                    let _ = fs::remove_file(&symlink_path);
-                    #[cfg(unix)]
-                    let _ = std::os::unix::fs::symlink(&exe_path, &symlink_path);
-                }
-            }
-        }
+        ensure_desktop_integration(&exe_path);
     }
 
-
-    // Check if first-run setup is complete
-    let setup_path = config_dir.join("setup_done");
-    let _is_first_run = !setup_path.exists();
-
-    // Register/update desktop environment shortcuts for enabled features only
+    // Register/update desktop environment shortcuts for enabled features
     if let Err(e) = backend::shortcuts::register_shortcuts_filtered(&settings) {
-        eprintln!("[Main] Shortcuts registration warning: {}", e);
+        eprintln!("[Main] Shortcuts registration notice: {}", e);
     }
 
-    // Create Slint App Window
+    // Create Slint App Window & Snipping Overlay Window
     let app = AppWindow::new()?;
     let app_weak = app.as_weak();
+
+    let snipping_overlay = SnippingOverlay::new()?;
+    backend::ocr::register_snipping_overlay(&snipping_overlay, conn.clone(), app_weak.clone());
 
     let initial_is_dark = match settings.theme_mode.as_str() {
         "dark" => true,
@@ -115,8 +185,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.set_enable_clipboard(settings.enable_clipboard_feature);
     app.set_enable_emoji(settings.enable_emoji_feature);
     app.set_enable_ocr(settings.enable_ocr_feature);
-
-    
 
     // Populate initial emojis
     refresh_emojis(app_weak.clone(), 0, String::new());
@@ -131,14 +199,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _focus_timer = ui::window::setup_focus_loss_listener(&app);
     ui::window::position_window(&app);
 
-    // Spawn IPC socket listener in background with config_manager
+    // Spawn IPC socket listener in background
     spawn_ipc_listener(&sock_path, app_weak.clone(), conn.clone(), config_manager.clone());
 
     // Start background clipboard watcher
     let app_weak_watcher = app_weak.clone();
     let conn_watcher = conn.clone();
     let config_manager_watcher = config_manager.clone();
+    let tokio_handle_watcher = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+        let _tokio_guard = tokio_handle_watcher.enter();
         let mut clean_counter = 0;
         let mut theme_check_counter = 0;
         let mut current_applied_dark = initial_is_dark;
@@ -150,7 +220,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let settings = config_manager_watcher.load();
 
-            // Check system theme change (~2s)
+            // Check system theme change (~3s)
             if theme_check_counter >= 4 {
                 theme_check_counter = 0;
                 let target_is_dark = match settings.theme_mode.as_str() {
@@ -169,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // Periodic database size cleanup (~30s)
+            // Periodic database size cleanup (~45s)
             if clean_counter >= 60 {
                 clean_counter = 0;
                 let db = conn_watcher.lock();
@@ -188,7 +258,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Completely pause/skip clipboard polling when Clipboard History tool is disabled
             if !settings.enable_clipboard_feature {
-                std::thread::sleep(Duration::from_millis(750));
                 continue;
             }
 
@@ -203,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         backend::clipboard::LAST_TEXT_HASH.store(text_hash, std::sync::atomic::Ordering::SeqCst);
                         backend::clipboard::LAST_IMAGE_HASH.store(0, std::sync::atomic::Ordering::SeqCst);
 
-                        // Insert new clipboard item
+                        // Clean whitespace for single-line preview
                         let cleaned: String = text
                             .chars()
                             .map(|c| if c == '\r' || c == '\n' || c == '\t' { ' ' } else { c })
@@ -285,30 +354,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Start System Tray Icon
-    let _tray = ui::tray::setup_tray().ok();
+    // Start pure Rust DBus System Tray
+    let _tray_handle = ui::tray::setup_tray(app_weak.clone(), conn.clone());
 
     // Show initial window based on CLI flags
-    if args.contains(&"--toggle".to_string()) {
+    if args.iter().any(|a| a == "--toggle" || a == "-t" || a == "-c" || a == "--clipboard") {
         if settings.enable_clipboard_feature {
             backend::simulator::save_focused_window();
             app.set_active_tab(0);
             app.set_search_placeholder("Search history...".into());
             let _ = app.window().show();
         }
-    } else if args.contains(&"--emoji".to_string()) {
+    } else if args.iter().any(|a| a == "--emoji" || a == "-e") {
         if settings.enable_emoji_feature {
             backend::simulator::save_focused_window();
             app.set_active_tab(1);
             app.set_search_placeholder("Search emojis...".into());
             let _ = app.window().show();
         }
-    } else if args.contains(&"--ocr".to_string()) {
+    } else if args.iter().any(|a| a == "--ocr" || a == "-o" || a == "--grab") {
         if settings.enable_ocr_feature {
             crate::backend::ocr::run_ocr_capture_and_ingest(conn.clone(), app_weak.clone());
         }
-    } else if !args.contains(&"--background".to_string()) {
-        // Direct launch without flags (e.g. app launcher or terminal lincb.ople.in): Launch MainWindow!
+    } else if !args.iter().any(|a| a == "--background" || a == "-b") {
+        // Direct launch without flags: Open Preferences window
         app.invoke_open_preferences();
     }
 
@@ -327,7 +396,7 @@ fn setup_callbacks(
 ) {
     let app_weak = app.as_weak();
     
-    // 1. Paste Item
+    // 1. Paste Item Callback
     let conn_c = conn.clone();
     let app_weak_c = app_weak.clone();
     app.on_paste_item(move |id| {
@@ -341,30 +410,16 @@ fn setup_callbacks(
         };
 
         if let Some(content) = content_opt {
-            // Hide window immediately (queued in event loop)
             if let Some(app) = app_weak_c.upgrade() {
                 let _ = app.window().hide();
                 app.invoke_reset_state();
             }
 
-            // Spawn background thread for focus restore + clipboard + paste
-            // This lets the Slint event loop process the window hide first
             std::thread::spawn(move || {
-                // Wait for the window to actually hide and compositor to process it
                 std::thread::sleep(std::time::Duration::from_millis(150));
 
-                // Restore active window focus and verify it settled
-                match backend::simulator::restore_focused_window() {
-                    Ok(true) => {
-                        // Focus settled successfully
-                    }
-                    _ => {
-                        // Focus restoration could not be verified in time - sleep a bit extra to be safe
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                }
+                let _ = backend::simulator::restore_focused_window();
 
-                // Set clipboard robustly
                 match &content {
                     ClipboardContent::Text(text) => {
                         let _ = backend::clipboard::set_text_robust(text);
@@ -377,21 +432,18 @@ fn setup_callbacks(
                     }
                 }
 
-                // Wait for clipboard to settle
                 std::thread::sleep(std::time::Duration::from_millis(60));
 
-                // Simulate paste
                 if let Err(e) = backend::simulator::simulate_paste_keystroke() {
-                    eprintln!("[Main] Paste simulation failed: {}", e);
+                    eprintln!("[Main] Paste notice: {}", e);
                 }
 
-                // Post-paste delay to let target app read clipboard
-                std::thread::sleep(std::time::Duration::from_millis(250));
+                std::thread::sleep(std::time::Duration::from_millis(200));
             });
         }
     });
 
-    // 2. Delete Item
+    // 2. Delete Item Callback
     let conn_c = conn.clone();
     let app_weak_c = app_weak.clone();
     app.on_delete_item(move |id| {
@@ -402,7 +454,7 @@ fn setup_callbacks(
         refresh_clips(app_weak_c.clone(), conn_c.clone(), String::new());
     });
 
-    // 3. Toggle Pin
+    // 3. Toggle Pin Callback
     let conn_c = conn.clone();
     let app_weak_c = app_weak.clone();
     app.on_toggle_pin(move |id| {
@@ -413,7 +465,7 @@ fn setup_callbacks(
         refresh_clips(app_weak_c.clone(), conn_c.clone(), String::new());
     });
 
-    // 4. Clear History
+    // 4. Clear History Callback
     let conn_c = conn.clone();
     let app_weak_c = app_weak.clone();
     app.on_clear_history(move || {
@@ -424,7 +476,7 @@ fn setup_callbacks(
         refresh_clips(app_weak_c.clone(), conn_c.clone(), String::new());
     });
 
-    // 5. Search Changed
+    // 5. Search Changed Callback
     let conn_c = conn.clone();
     let app_weak_c = app_weak.clone();
     app.on_search_changed(move |text| {
@@ -439,13 +491,13 @@ fn setup_callbacks(
         }
     });
 
-    // 5b. Emoji Category Changed
+    // 5b. Emoji Category Changed Callback
     let app_weak_c = app_weak.clone();
     app.on_emoji_category_changed(move |category_idx| {
         refresh_emojis(app_weak_c.clone(), category_idx, String::new());
     });
 
-    // 6. Record Emoji Click
+    // 6. Record Emoji Click Callback
     let conn_c = conn.clone();
     let app_weak_c = app_weak.clone();
     app.on_record_emoji(move |emoji| {
@@ -454,51 +506,31 @@ fn setup_callbacks(
             let _ = backend::db::record_emoji_usage(&db, emoji.as_str());
         }
         
-        // Clone emoji string for background thread
         let emoji_str = emoji.to_string();
 
-        // Hide window immediately (queued in event loop)
         if let Some(app) = app_weak_c.upgrade() {
             let _ = app.window().hide();
             app.invoke_reset_state();
         }
 
-        // Spawn background thread for paste
         std::thread::spawn(move || {
-            // Wait for the window to actually hide and compositor to process it
             std::thread::sleep(std::time::Duration::from_millis(150));
 
-            // IMPORTANT: Restore focus BEFORE setting clipboard.
-            // If we set clipboard first, the target window's clipboard manager may
-            // reclaim the CLIPBOARD X11 selection when it receives focus,
-            // overwriting our emoji with the previous clipboard content.
-            match backend::simulator::restore_focused_window() {
-                Ok(true) => {
-                    // Focus settled successfully
-                }
-                _ => {
-                    // Focus restoration could not be verified - wait a bit extra
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-            }
+            let _ = backend::simulator::restore_focused_window();
 
-            // Now set the emoji to clipboard (focus is already on target window)
             let _ = backend::clipboard::set_text_robust(&emoji_str);
 
-            // Wait for clipboard to settle before pasting
             std::thread::sleep(std::time::Duration::from_millis(80));
 
-            // Simulate paste
             if let Err(e) = backend::simulator::simulate_paste_keystroke() {
-                eprintln!("[Main] Paste simulation failed: {}", e);
+                eprintln!("[Main] Paste notice: {}", e);
             }
 
-            // Post-paste delay
-            std::thread::sleep(std::time::Duration::from_millis(250));
+            std::thread::sleep(std::time::Duration::from_millis(200));
         });
     });
 
-    // 8. Close Window
+    // 8. Close Window Callback
     let app_weak_c = app_weak.clone();
     app.on_close_window(move || {
         if let Some(app) = app_weak_c.upgrade() {
@@ -507,9 +539,7 @@ fn setup_callbacks(
         }
     });
 
-
-
-    // 11b. Fix Single Shortcut instantly (toggle, emoji, ocr)
+    // 11b. Fix Single Shortcut Callback
     app.on_fix_single_shortcut(move |sc_type| {
         let sc_str = sc_type.to_string();
         if let Err(e) = backend::shortcuts::fix_single_shortcut(&sc_str) {
@@ -525,16 +555,12 @@ fn setup_callbacks(
     app.on_change_theme(move |mode| {
         if let Some(app) = app_weak_theme.upgrade() {
             let mode_str = mode.to_string();
-            
-            // Update UI property state
             app.set_theme_mode(mode.clone());
             
-            // Save to settings
             let mut settings = config_manager_theme.load();
             settings.theme_mode = mode_str.clone();
             let _ = config_manager_theme.save(&settings);
             
-            // Re-apply theme instantly
             let is_dark = match mode_str.as_str() {
                 "dark" => true,
                 "light" => false,
@@ -556,9 +582,7 @@ fn setup_callbacks(
         }
     });
 
-
-
-    // 15. Open Standalone Preferences Window (MainWindow in Slint)
+    // 15. Open Standalone Preferences Window
     let main_win_store: Arc<Mutex<Option<MainWindow>>> = Arc::new(Mutex::new(None));
     let main_win_store_c = main_win_store.clone();
     let conn_pref = conn.clone();
@@ -614,7 +638,7 @@ fn show_main_window(
 
         refresh_window_conflicts(&main_win);
 
-        // 1. Change Theme Callback
+        // Change Theme
         let config_manager_c = config_manager.clone();
         let app_weak_c = app_weak.clone();
         let main_win_weak = main_win.as_weak();
@@ -640,7 +664,7 @@ fn show_main_window(
             }
         });
 
-        // 1b. Change Accent Color Callback
+        // Change Accent Color
         let config_manager_accent = config_manager.clone();
         let app_weak_accent = app_weak.clone();
         let main_win_weak_accent = main_win.as_weak();
@@ -658,8 +682,7 @@ fn show_main_window(
             }
         });
 
-
-        // 1b. Toggle Clipboard Callback
+        // Toggle Clipboard
         let config_manager_clip = config_manager.clone();
         let app_weak_clip = app_weak.clone();
         let main_win_weak_clip = main_win.as_weak();
@@ -677,7 +700,7 @@ fn show_main_window(
             }
         });
 
-        // 1c. Toggle Emoji Callback
+        // Toggle Emoji
         let config_manager_emoji = config_manager.clone();
         let app_weak_emoji = app_weak.clone();
         let main_win_weak_emoji = main_win.as_weak();
@@ -695,7 +718,7 @@ fn show_main_window(
             }
         });
 
-        // 2. Toggle OCR Callback
+        // Toggle OCR
         let config_manager_ocr = config_manager.clone();
         let app_weak_ocr = app_weak.clone();
         let main_win_weak_ocr = main_win.as_weak();
@@ -713,9 +736,7 @@ fn show_main_window(
             }
         });
 
-
-
-        // 3b. Fix Single Shortcut Callback
+        // Fix Single Shortcut
         let main_win_weak_fix = main_win.as_weak();
         main_win.on_fix_single_shortcut(move |sc_type| {
             let sc_str = sc_type.to_string();
@@ -729,7 +750,7 @@ fn show_main_window(
             }
         });
 
-        // 4. Clear History Callback
+        // Clear History
         let conn_clear = conn.clone();
         let app_weak_clear = app_weak.clone();
         let main_win_weak_clear = main_win.as_weak();
@@ -744,15 +765,13 @@ fn show_main_window(
             }
         });
 
-        // 5. Open URL Callback (Contribute button)
+        // Open URL
         main_win.on_open_url(move |url| {
             let _ = std::process::Command::new("xdg-open").arg(url.as_str()).spawn();
         });
 
         let _ = main_win.window().show();
         *store = Some(main_win);
-
-
     }
 }
 

@@ -1,132 +1,177 @@
-# 🧩 Ople MagicToys for Linux
+<div align="center">
+
+<img src="icon.png" width="128" height="128" alt="MagicToys Logo" />
+
+# 🧩 MagicToys for Linux
+
+### *The Native, Ultra-Fast PowerToys Productivity Suite for Linux*
+
+[![Release](https://img.shields.io/badge/Release-v0.0.4-brightgreen?style=for-the-badge&logo=github)](https://github.com/HeyAtulVerma/MagicToys/releases)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge)](LICENSE)
+[![Built With](https://img.shields.io/badge/Built_With-Rust_%26_Slint-orange?style=for-the-badge&logo=rust)](https://slint.dev/)
+[![Platform](https://img.shields.io/badge/Platform-X11_%7C_Wayland_%7C_Hyprland-blueviolet?style=for-the-badge&logo=linux)](https://github.com/HeyAtulVerma/MagicToys)
+[![Architecture](https://img.shields.io/badge/Arch-x86__64_%7C_amd64-informational?style=for-the-badge)](#)
 
 <p align="center">
-  <img src="icon.png" width="128" height="128" alt="Ople MagicToys logo" />
-</p>
-
-<h3 align="center">Native Windows PowerToys &amp; Windows 11 Clipboard History Suite for Linux</h3>
-
-<p align="center">
-  <a href="https://magictoys.ople.in"><img src="https://img.shields.io/badge/Website-magictoys.ople.in-0078D4?style=for-the-badge&logo=firefox" alt="Website" /></a>
-  <a href="https://github.com/HeyAtulVerma/MagicToys/releases"><img src="https://img.shields.io/badge/Release-v0.0.3--beta-brightgreen?style=for-the-badge&logo=github" alt="Release" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" /></a>
-  <img src="https://img.shields.io/badge/Built_With-Rust_%26_Slint-orange?style=for-the-badge&logo=rust" alt="Rust & Slint" />
+  <b>MagicToys</b> brings the most loved productivity tools from Windows PowerToys natively to Linux desktops.<br>
+  Engineered in <b>100% Pure Rust and Slint</b> for instant startup, zero background CPU usage, and rock-solid stability.
 </p>
 
 ---
 
-## ⚡ Quick One-Line Installation
+</div>
 
-Install **MagicToys** automatically on **any Linux distribution** (Ubuntu, Debian, Arch, Fedora, Mint, Pop!_OS, openSUSE) with a single command:
-
-```bash
-curl -sS https://magictoys.ople.in/install.sh | bash
-```
-
-> **Note:** The installer automatically detects your Linux distribution, downloads the matching pre-built package (`.deb`, `.pkg.tar.zst`, `.rpm`, or `AppImage`), sets up system dependencies (`xclip`, `tesseract-ocr`), configures `uinput` permissions for Wayland, and creates desktop launcher shortcuts automatically.
-
----
-
-## ✨ PowerToys Feature Matrix
-
-**Ople MagicToys** brings popular Windows 11 and Windows PowerToys features natively to Linux:
+## 🌟 Core Features
 
 | Feature | Shortcut | Windows Equivalent | Description |
-| :--- | :--- | :--- | :--- |
-| **Clipboard History** | <kbd>Alt</kbd> + <kbd>V</kbd> | `Win + V` | Instant recall of copied text, rich formatted text, and PNG image thumbnail previews with smart de-duplication and SQLite persistence. |
-| **Emoji &amp; Symbol Picker** | <kbd>Alt</kbd> + <kbd>.</kbd> | `Win + .` | Categorized Unicode emoji grid picker with live search and LRU usage frequency tracking. |
-| **Screen Text Extractor (OCR)** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | PowerToys OCR (`Win+Shift+T`) | Drag a box over any screen area to grab text from images, slides, videos, or non-copyable PDFs via Tesseract OCR directly into your clipboard. |
+| :--- | :---: | :---: | :--- |
+| **📋 Clipboard History** | <kbd>Alt</kbd> + <kbd>V</kbd> | `Win + V` | Instant recall of copied text, rich formatted text, and PNG image thumbnail previews with smart de-duplication, search, pinning, and SQLite persistence. |
+| **😀 Emoji & Symbol Picker** | <kbd>Alt</kbd> + <kbd>.</kbd> | `Win + .` | Categorized Unicode 15+ emoji and symbol grid with live search, keyword tagging, and LRU frequency tracking. |
+| **🔍 Windows 11 Text Extractor (OCR)** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | `Win + Shift + T` | Instantaneous screen freeze with dark veil dimming, precision crosshair cursor, Fluent top pill banner, live drag box, and pure-Rust high-contrast OCR directly to clipboard. |
 
 ---
 
-## 🎨 Additional Capabilities
+## ⚡ Instant Installation
 
-- 🎨 **6 Curated Accent Colors**: Choose between Ople Orange (`#f97316`), Sapphire Blue (`#3b82f6`), Amethyst Purple (`#8b5cf6`), Emerald Green (`#22c55e`), Rose Red (`#f43f5e`), and Cyan (`#06b6d4`).
-- 🌙 **Dark, Light &amp; System Theme Modes**: Automatic theme detection via DBus notifications. Opaque background architecture guarantees 100% sharp GPU subpixel font antialiasing (FemtoVG/Slint).
-- 📌 **Item Pinning &amp; Organization**: Lock important clips to top of history.
-- ⚡ **Native Wayland &amp; X11 Engine**: Uses Linux `/dev/uinput` virtual keyboard device on Wayland (GNOME, KDE), with XTest and EWMH focus restoration on X11.
-- 🔒 **100% Local &amp; Private**: Zero telemetry, zero tracking, zero network calls. All clips and settings stay local inside `~/.config/magictoys/db.db`.
+Pre-compiled packages for all major Linux distributions are available under [Releases](releases/):
 
----
-
-## 📦 Manual Package Installation Options
-
-Download pre-built packages from the [Releases Page](https://github.com/HeyAtulVerma/MagicToys/releases):
-
-### 1. Ubuntu / Debian / Pop!_OS / Mint (`.deb`)
+### 🐧 Ubuntu / Debian / Pop!_OS / Linux Mint / Zorin OS (`.deb`)
 ```bash
-sudo apt update && sudo apt install -y xclip tesseract-ocr
-sudo dpkg -i magictoys_0.0.3_amd64.deb
-```
-*(Includes automatic desktop session auto-launch script right after installation).*
-
-### 2. Arch Linux / Manjaro / EndeavourOS (`.pkg.tar.zst`)
-```bash
-sudo pacman -U magictoys-0.0.3-1-x86_64.pkg.tar.zst
+sudo apt install ./releases/magictoys_0.0.4_amd64.deb
 ```
 
-### 3. Fedora / RHEL / openSUSE (`.rpm`)
+### 🏹 Arch Linux / Manjaro / EndeavourOS (`.pkg.tar.zst`)
 ```bash
-sudo dnf install ./magictoys-0.0.3-1.x86_64.rpm
+sudo pacman -U ./releases/magictoys-0.0.4-1-x86_64.pkg.tar.zst
 ```
 
-### 4. Portable AppImage (Universal)
+### 🎩 Fedora / RHEL / CentOS / openSUSE (`.rpm`)
 ```bash
-chmod +x MagicToys-0.0.3-x86_64.AppImage
-./MagicToys-0.0.3-x86_64.AppImage
+sudo dnf install ./releases/magictoys-0.0.4-1.x86_64.rpm
+```
+
+### 📦 Universal Standalone AppImage *(Works on any distro)*
+```bash
+chmod +x releases/MagicToys-0.0.4-x86_64.AppImage
+./releases/MagicToys-0.0.4-x86_64.AppImage
+```
+
+### 🗜️ Generic Portable Tarball
+```bash
+tar -xzf releases/magictoys-0.0.4-x86_64.tar.gz
+cd magictoys-0.0.4
+sudo ./install.sh
 ```
 
 ---
 
-## ⌨️ Keyboard Shortcuts &amp; Navigation
+## 🎯 What Makes MagicToys Different?
 
-| Shortcut | Action |
-| :--- | :--- |
-| **`Alt + V`** | Toggle Clipboard History modal |
-| **`Alt + .`** | Toggle Emoji Picker panel |
-| **`Alt + Shift + T`** | Run Screen Region Text Extractor (OCR) |
-| **`Up / Down`** | Navigate through clipboard list |
-| **`Enter`** | Paste selected clip directly into current active window |
-| **`Delete`** | Remove selected clip from history |
+- 🚀 **Sub-Millisecond Response**: Written in native compiled Rust with GPU-accelerated Slint rendering for 60fps animations and instant popup drawer response.
+- 🛡️ **Zero-Crash Resilience**: If optional system tools (`tesseract`, `wtype`, `xclip`, or system tray services) are missing, features degrade gracefully with informative guidance rather than crashing.
+- 🌐 **Universal Display Server & DE Support**: 100% functional on X11, native Wayland, Hyprland, Sway, GNOME 45/46/50, KDE Plasma 5/6, XFCE, Cinnamon, and MATE.
+- ⌨️ **Multi-Tier Keystroke Simulation**: Intelligent paste simulation automatically selects `wtype`, `ydotool`, `dotool`, direct Linux `/dev/uinput` virtual keyboard, `xdotool`, or XTest based on your active session.
+- 🎨 **Modern Fluent UI & Theming**: Auto-adapts to your desktop's Dark/Light mode via Freedesktop DBus protocols, with 6 curated accent colors.
+- 🔒 **100% Local & Private**: No telemetry, no network calls, no cloud tracking. All history and preferences remain encrypted in your local `~/.config/magictoys/` directory.
 
 ---
 
-## 🛠️ Building from Source &amp; Releases
+## ⌨️ Global Shortcuts & Window Managers
 
-### Prerequisites (Ubuntu/Debian):
-```bash
-sudo apt update && sudo apt install -y \
-    build-essential pkg-config libfontconfig1-dev libx11-dev \
-    libxtst-dev libxdo-dev libglib2.0-dev libgtk-3-dev \
-    tesseract-ocr libtesseract-dev libleptonica-dev xclip
+### Desktop Environments (GNOME, KDE Plasma, XFCE, Cinnamon, MATE)
+Shortcuts are registered automatically upon installation. You can re-bind or inspect them anytime inside MagicToys Preferences.
+
+| Action | Shortcut | CLI Command |
+| :--- | :---: | :--- |
+| **Toggle Clipboard History** | <kbd>Alt</kbd> + <kbd>V</kbd> | `magictoys --toggle` |
+| **Open Emoji & Symbol Picker** | <kbd>Alt</kbd> + <kbd>.</kbd> | `magictoys --emoji` |
+| **Screen Text Extractor (OCR)** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | `magictoys --ocr` |
+| **Open Preferences** | — | `magictoys` |
+| **Print Version** | — | `magictoys --version` |
+
+---
+
+### Tiling Window Managers (Hyprland / Sway / i3)
+
+Add these bindings to your window manager configuration:
+
+#### **Hyprland** (`~/.config/hypr/hyprland.conf`)
+```ini
+bind = ALT, V, exec, magictoys --toggle
+bind = ALT, PERIOD, exec, magictoys --emoji
+bind = ALT SHIFT, T, exec, magictoys --ocr
+exec-once = magictoys --background
 ```
 
-### Build Binary:
+#### **Sway** (`~/.config/sway/config`)
+```ini
+bindsym Mod1+v exec magictoys --toggle
+bindsym Mod1+period exec magictoys --emoji
+bindsym Mod1+Shift+t exec magictoys --ocr
+exec magictoys --background
+```
+
+#### **i3wm** (`~/.config/i3/config`)
+```ini
+bindsym Mod1+v exec magictoys --toggle
+bindsym Mod1+period exec magictoys --emoji
+bindsym Mod1+Shift+t exec magictoys --ocr
+exec --no-startup-id magictoys --background
+```
+
+---
+
+## 🛠️ Building from Source
+
+### Prerequisites
+- **Rust toolchain** (1.75+): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **Build essentials**: `make`, `gcc`, `pkg-config`
+
+### Compilation & System Installation
 ```bash
 git clone https://github.com/HeyAtulVerma/MagicToys.git
-cd MagicToys/work
-cargo build --release
+cd MagicToys
+
+# Build release binary
+make build
+
+# Install binary, desktop files, icons, and autostart launchers
+sudo make install
+
+# Configure uinput permissions for Wayland keystroke simulation (optional)
+sudo make install-rules
 ```
 
-### Build All Linux Release Packages (`work/releases/`):
+### Packaging for All Linux Distros
 ```bash
 ./build-all.sh
 ```
-*Generates `.deb`, `.pkg.tar.zst`, `.rpm`, `.AppImage`, `.tar.gz`, and `SHA256SUMS` inside `work/releases/`.*
+*Compiles release binaries with cross-distro GLIBC compatibility and generates `.deb`, `.pkg.tar.zst`, `.rpm`, `.AppImage`, `.tar.gz`, and `SHA256SUMS` in `releases/`.*
 
 ---
 
 ## 🗑️ Uninstallation
 
-To remove **MagicToys** from your system:
+To remove MagicToys from your system:
 
-- **Ubuntu / Debian**: `sudo apt remove magictoys`
-- **Arch Linux**: `sudo pacman -R magictoys`
-- **Fedora / RHEL**: `sudo dnf remove magictoys`
+```bash
+# Ubuntu / Debian
+sudo apt remove magictoys
+
+# Arch Linux
+sudo pacman -R magictoys
+
+# Fedora
+sudo dnf remove magictoys
+
+# Source installation
+sudo make uninstall
+```
 
 ---
 
-## 📄 License
+## 📄 License & Attribution
 
-This project is licensed under the [MIT License](LICENSE).  
-Created by **[Ople](https://ople.in)** — Official Homepage: **[magictoys.ople.in](https://magictoys.ople.in)**.
+MagicToys is free and open-source software licensed under the **[GNU General Public License v3.0](LICENSE)** (GPL-3.0-or-later).
+
+*Created with ❤️ for the Linux desktop community.*

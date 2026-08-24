@@ -1,111 +1,127 @@
-//! Native screen region capture using xdg-desktop-portal via zbus.
-//! Calls org.freedesktop.portal.Screenshot with interactive=true.
-//! No external tools (gnome-screenshot, grim, slurp, etc.) required.
+//! Screen region capture module using pure Rust X11 and Wayland utilities.
+//! Grabs exact bounding boxes for the Windows 11 style Snipping Overlay without external UI tools.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
-use zbus::blocking::{Connection, MessageIterator};
-use zbus::MatchRule;
-use zbus::zvariant::{OwnedValue, Value};
+use std::process::Command;
+use crate::backend::simulator::is_x11;
+use image::RgbaImage;
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::*;
 
-/// Capture a screen region using the xdg-desktop-portal Screenshot portal.
-/// Shows GNOME's / KDE's native interactive screenshot UI (region-selection crosshair).
-/// Returns the path to the saved PNG file on success.
-pub fn capture_region_via_portal() -> Result<PathBuf, String> {
-    // Connect to the session bus
-    let conn = Connection::session()
-        .map_err(|e| format!("[OCR] Failed to connect to D-Bus session: {}", e))?;
-
-    // Build options: interactive=true triggers region-selection UI in GNOME / KDE Plasma
-    let mut options: HashMap<&str, Value<'_>> = HashMap::new();
-    options.insert("interactive", Value::Bool(true));
-    options.insert("handle_token", Value::Str("lincb_ocr1".into()));
-
-    // Call org.freedesktop.portal.Screenshot.Screenshot
-    // Returns the request object path we must subscribe to
-    let reply = conn
-        .call_method(
-            Some("org.freedesktop.portal.Desktop"),
-            "/org/freedesktop/portal/desktop",
-            Some("org.freedesktop.portal.Screenshot"),
-            "Screenshot",
-            &("", &options),
-        )
-        .map_err(|e| format!("[OCR] Portal Screenshot call failed: {}", e))?;
-
-    let handle: zbus::zvariant::OwnedObjectPath = reply
-        .body()
-        .deserialize()
-        .map_err(|e| format!("[OCR] Failed to read portal response handle: {}", e))?;
-
-    let handle_str = handle.as_str().to_owned();
-
-    // Build a match rule to listen for Response signals on our specific request handle
-    let match_rule = MatchRule::builder()
-        .msg_type(zbus::message::Type::Signal)
-        .interface("org.freedesktop.portal.Request")
-        .map_err(|e| format!("[OCR] Bad interface name: {}", e))?
-        .member("Response")
-        .map_err(|e| format!("[OCR] Bad member name: {}", e))?
-        .path(handle_str.as_str())
-        .map_err(|e| format!("[OCR] Bad path: {}", e))?
-        .build();
-
-    // Create a blocking iterator that yields only matching signals
-    let mut iter = MessageIterator::for_match_rule(match_rule, &conn, Some(1))
-        .map_err(|e| format!("[OCR] Failed to subscribe to portal Response: {}", e))?;
-
-    // Wait up to 60 seconds for the user to complete or cancel selection
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
-
-    loop {
-        if std::time::Instant::now() > deadline {
-            return Err("[OCR] Timed out waiting for screenshot selection.".to_string());
+/// Captures the exact selected sub-rectangle coordinates (x, y, w, h) directly into an RgbaImage.
+/// On X11: uses pure Rust x11rb GetImage (2ms, zero dependencies).
+/// On Wayland: uses grim or maim with bounding box flags (silent, no interactive UI).
+pub fn capture_subregion(x: i32, y: i32, w: u32, h: u32) -> Result<RgbaImage, String> {
+    if is_x11() {
+        if let Ok(img) = capture_subregion_x11(x as i16, y as i16, w as u16, h as u16) {
+            return Ok(img);
         }
+    }
 
-        match iter.next() {
-            Some(Ok(msg)) => {
-                // Response body: (u response_code, a{sv} results)
-                let (code, results): (u32, HashMap<String, OwnedValue>) = msg
-                    .body()
-                    .deserialize()
-                    .map_err(|e| format!("[OCR] Failed to decode portal response: {}", e))?;
+    capture_subregion_wayland(x, y, w, h)
+}
 
-                if code != 0 {
-                    return Err(format!(
-                        "[OCR] User cancelled screenshot selection (code: {}).",
-                        code
-                    ));
-                }
+/// Pure Rust X11 sub-rectangle capture via x11rb
+pub fn capture_subregion_x11(x: i16, y: i16, width: u16, height: u16) -> Result<RgbaImage, String> {
+    let (conn, screen_num) = x11rb::connect(None).map_err(|e| format!("X11 connect error: {}", e))?;
+    let screen = &conn.setup().roots[screen_num];
+    let root = screen.root;
 
-                // Extract the 'uri' from results
-                let uri_value = results
-                    .get("uri")
-                    .ok_or_else(|| "[OCR] Portal response missing 'uri' field.".to_string())?;
+    let img_reply = conn.get_image(
+        ImageFormat::Z_PIXMAP,
+        root,
+        x,
+        y,
+        width,
+        height,
+        !0,
+    ).map_err(|e| format!("GetImage request error: {}", e))?
+    .reply().map_err(|e| format!("GetImage reply error: {}", e))?;
 
-                let uri_str: String = match <&str>::try_from(uri_value) {
-                    Ok(s) => s.to_string(),
-                    Err(_) => uri_value.to_string().trim_matches('"').to_string(),
-                };
-
-                // Convert file:// URI to PathBuf
-                let path_encoded = uri_str
-                    .strip_prefix("file://")
-                    .ok_or_else(|| format!("[OCR] Portal URI is not a file:// path: {}", uri_str))?;
-
-                let decoded = percent_encoding::percent_decode_str(path_encoded)
-                    .decode_utf8_lossy()
-                    .to_string();
-
-                return Ok(PathBuf::from(decoded));
-            }
-            Some(Err(e)) => {
-                return Err(format!("[OCR] Error receiving portal signal: {}", e));
-            }
-            None => {
-                // Iterator exhausted without receiving signal; retry loop
-                std::thread::sleep(std::time::Duration::from_millis(50));
+    let data = img_reply.data;
+    let mut rgba_img = RgbaImage::new(width as u32, height as u32);
+    let mut i = 0;
+    for py in 0..height as u32 {
+        for px in 0..width as u32 {
+            if i + 3 < data.len() {
+                let b = data[i];
+                let g = data[i + 1];
+                let r = data[i + 2];
+                rgba_img.put_pixel(px, py, image::Rgba([r, g, b, 255]));
+                i += 4;
             }
         }
     }
+    Ok(rgba_img)
+}
+
+/// Wayland / CLI sub-rectangle capture using grim, maim, or Xwayland
+fn capture_subregion_wayland(x: i32, y: i32, w: u32, h: u32) -> Result<RgbaImage, String> {
+    let tmp_file = std::env::temp_dir().join(format!("magictoys_crop_{}.png", uuid::Uuid::new_v4()));
+    let tmp_str = tmp_file.to_str().unwrap_or("/tmp/magictoys_crop.png");
+
+    let success = if command_exists("grim") {
+        let geom = format!("{},{} {}x{}", x, y, w, h);
+        Command::new("grim").args(["-g", &geom, tmp_str]).status().map(|s| s.success()).unwrap_or(false)
+    } else if command_exists("maim") {
+        let geom = format!("{}x{}+{}+{}", w, h, x, y);
+        Command::new("maim").args(["-g", &geom, tmp_str]).status().map(|s| s.success()).unwrap_or(false)
+    } else {
+        false
+    };
+
+    if success && tmp_file.exists() {
+        let dyn_img = image::open(&tmp_file).map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&tmp_file);
+        return Ok(dyn_img.to_rgba8());
+    }
+
+    // Try Xwayland fallback
+    capture_subregion_x11(x as i16, y as i16, w as u16, h as u16)
+}
+
+/// Universal fallback screen region capture entry point
+pub fn capture_screen_region() -> Result<PathBuf, String> {
+    let tmp_file = std::env::temp_dir().join(format!("magictoys_grab_{}.png", uuid::Uuid::new_v4()));
+    let tmp_path_str = tmp_file.to_str().ok_or("Invalid temporary path")?;
+
+    if is_x11() {
+        if command_exists("maim") {
+            let status = Command::new("maim").args(["-s", tmp_path_str]).status();
+            if let Ok(s) = status {
+                if s.success() && tmp_file.exists() { return Ok(tmp_file); }
+            }
+        }
+        if command_exists("scrot") {
+            let status = Command::new("scrot").args(["-s", tmp_path_str]).status();
+            if let Ok(s) = status {
+                if s.success() && tmp_file.exists() { return Ok(tmp_file); }
+            }
+        }
+    } else {
+        if command_exists("grim") && command_exists("slurp") {
+            let slurp_output = Command::new("slurp").output();
+            if let Ok(slurp_out) = slurp_output {
+                let geom = String::from_utf8_lossy(&slurp_out.stdout).trim().to_string();
+                if !geom.is_empty() {
+                    let status = Command::new("grim").args(["-g", &geom, tmp_path_str]).status();
+                    if let Ok(s) = status {
+                        if s.success() && tmp_file.exists() {
+                            return Ok(tmp_file);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err("No screen capture mechanism succeeded.".to_string())
+}
+
+fn command_exists(cmd: &str) -> bool {
+    Command::new("which")
+        .arg(cmd)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }

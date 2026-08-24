@@ -1,5 +1,5 @@
-// linux-clipboard EmojiPanel component
-// Displays categorized emoji picker grid.
+// MagicToys EmojiPanel component
+// Displays categorized emoji picker grid with clean cross-platform font rendering.
 
 import { ScrollView } from "std-widgets.slint";
 import { SlintEmojiRow } from "./types.slint";
@@ -37,7 +37,7 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 0 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 0 ? 1px : 0px;
+                border-width: active-emoji-category == 0 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
                     text: "😀";
@@ -55,7 +55,7 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 1 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 1 ? 1px : 0px;
+                border-width: active-emoji-category == 1 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
                     text: "👋";
@@ -73,7 +73,7 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 2 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 2 ? 1px : 0px;
+                border-width: active-emoji-category == 2 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
                     text: "🐱";
@@ -91,7 +91,7 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 3 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 3 ? 1px : 0px;
+                border-width: active-emoji-category == 3 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
                     text: "🍔";
@@ -109,7 +109,7 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 4 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 4 ? 1px : 0px;
+                border-width: active-emoji-category == 4 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
                     text: "⚽";
@@ -127,10 +127,10 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 5 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 5 ? 1px : 0px;
+                border-width: active-emoji-category == 5 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
-                    text: "✈️";
+                    text: "🚗";
                     font-size: 16px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -145,7 +145,7 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 6 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 6 ? 1px : 0px;
+                border-width: active-emoji-category == 6 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
                     text: "💡";
@@ -163,10 +163,10 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 7 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 7 ? 1px : 0px;
+                border-width: active-emoji-category == 7 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
-                    text: "❤️";
+                    text: "⭐";
                     font-size: 16px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -181,10 +181,10 @@ export component EmojiPanel inherits VerticalLayout {
             Rectangle {
                 background: active-emoji-category == 8 ? card-hover-bg : transparent;
                 border-radius: 6px;
-                border-width: active-emoji-category == 8 ? 1px : 0px;
+                border-width: active-emoji-category == 8 ? 1.5px : 0px;
                 border-color: accent-color;
                 Text {
-                    text: "🏁";
+                    text: "🚩";
                     font-size: 16px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -221,7 +221,6 @@ export component EmojiPanel inherits VerticalLayout {
                         Text {
                             text: emoji.character;
                             font-size: 22px;
-                            font-family: "Noto Color Emoji";
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }

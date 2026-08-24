@@ -1,5 +1,6 @@
 //! Clipboard interaction and monitoring module
-//! Reads and writes text, HTML, and images, utilizing robust fallbacks and persistent context
+//! Reads and writes text, HTML, and images in-process via pure-Rust arboard
+//! without spawning external CLI processes in polling loops (prevents GNOME dock shaking).
 
 use arboard::{Clipboard, ImageData};
 use std::borrow::Cow;
@@ -9,7 +10,6 @@ use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use crate::backend::simulator::is_x11;
 use base64::Engine;
-use x11rb::protocol::xproto::ConnectionExt;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
@@ -18,12 +18,20 @@ use parking_lot::Mutex;
 pub static LAST_TEXT_HASH: AtomicU64 = AtomicU64::new(0);
 pub static LAST_IMAGE_HASH: AtomicU64 = AtomicU64::new(0);
 
-/// Persistent global Clipboard context for WRITING to avoid selection loss on drop
+/// Persistent global Clipboard context for reading/writing in-process
 static PERSISTENT_CLIPBOARD: Lazy<Mutex<Option<Clipboard>>> = Lazy::new(|| {
     Mutex::new(Clipboard::new().ok())
 });
 
-/// Executes a write operation on the persistent Clipboard context with automatic re-initialization on connection loss
+fn command_exists(cmd: &str) -> bool {
+    Command::new("which")
+        .arg(cmd)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Executes an operation on the persistent Clipboard context with automatic re-initialization
 fn with_clipboard<F, R>(mut f: F) -> Result<R, String>
 where
     F: FnMut(&mut Clipboard) -> Result<R, arboard::Error>,
@@ -36,7 +44,6 @@ where
         match f(ctx) {
             Ok(val) => Ok(val),
             Err(e) => {
-                // If operation failed, try re-initializing connection once
                 if let Ok(mut fresh) = Clipboard::new() {
                     let res = f(&mut fresh);
                     *guard = Some(fresh);
@@ -51,87 +58,23 @@ where
     }
 }
 
-/// Get current text from clipboard with command-line tools first, then fresh arboard fallback
+/// Get current text from clipboard purely in-process via arboard
+/// (Does NOT spawn wl-paste/xclip subprocesses in polling loops to avoid dock flicker)
 pub fn get_current_text() -> Result<String, String> {
-    if is_x11() {
-        let output = Command::new("xclip")
-            .args(["-selection", "clipboard", "-o"])
-            .output();
-        if let Ok(out) = output {
-            if out.status.success() {
-                let text = String::from_utf8_lossy(&out.stdout).into_owned();
-                if !text.is_empty() {
-                    return Ok(text);
-                }
-            }
-        }
-    } else {
-        let output = Command::new("wl-paste")
-            .arg("-n")
-            .output();
-        if let Ok(out) = output {
-            if out.status.success() {
-                let text = String::from_utf8_lossy(&out.stdout).into_owned();
-                if !text.is_empty() {
-                    return Ok(text);
-                }
-            }
-        }
-    }
-
-    // For reading from external apps, use a fresh Clipboard instance to receive current selection notify
-    let mut ctx = Clipboard::new().map_err(|e| e.to_string())?;
-    ctx.get_text().map_err(|e| e.to_string())
+    with_clipboard(|ctx| ctx.get_text())
 }
 
-/// Returns the current owner window of the CLIPBOARD selection,
-/// or `None` when it cannot be determined (non-X11, connection failure).
-/// `Some(0)` (x11rb::NONE) means "no owner".
-pub fn clipboard_owner() -> Option<u32> {
-    if !is_x11() {
-        return None;
-    }
-    let (conn, _) = x11rb::connect(None).ok()?;
-    let atom = conn
-        .intern_atom(false, b"CLIPBOARD")
-        .ok()?
-        .reply()
-        .ok()?
-        .atom;
-    let owner = conn.get_selection_owner(atom).ok()?.reply().ok()?.owner;
-    Some(owner)
-}
-
-/// Wait (at most `budget`) for the CLIPBOARD selection owner to *change*
-/// from `owner_before` (to a non-NONE owner).
-pub fn settle_clipboard_handoff(owner_before: Option<u32>, budget: std::time::Duration) {
-    let start = std::time::Instant::now();
-    let deadline = start + budget;
-    let poll_interval = std::time::Duration::from_millis(3);
-    
-    while std::time::Instant::now() < deadline {
-        let before = match owner_before {
-            Some(owner) => owner,
-            None => return,
-        };
-        match clipboard_owner() {
-            Some(owner) if owner != 0 && owner != before => return,
-            _ => {}
-        }
-        std::thread::sleep(poll_interval);
-    }
-}
-
+/// Helper to write text via external command fallback (X11 only)
 fn set_clipboard_external(cmd: &str, args: &[&str], data: &str) -> Result<(), String> {
-    use std::io::Read;
-    
-    let owner_before = clipboard_owner();
+    if !command_exists(cmd) {
+        return Err(format!("Command '{}' not found", cmd));
+    }
 
     let mut child = Command::new(cmd)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", cmd, e))?;
 
@@ -141,44 +84,31 @@ fn set_clipboard_external(cmd: &str, args: &[&str], data: &str) -> Result<(), St
             .map_err(|e| format!("Pipe write error: {}", e))?;
     }
 
-    // Wait for the helper to acquire the selection
-    settle_clipboard_handoff(owner_before, std::time::Duration::from_millis(50));
-
-    match child.try_wait() {
-        Ok(Some(status)) if !status.success() => {
-            let mut stderr = String::new();
-            if let Some(mut stderr_pipe) = child.stderr.take() {
-                let _ = stderr_pipe.read_to_string(&mut stderr);
-            }
-            Err(format!(
-                "{} exited with status {}. Stderr: {}",
-                cmd,
-                status,
-                stderr.trim()
-            ))
+    if cmd == "xclip" {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    } else {
+        match child.wait() {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => Err(format!("{} exited with status {}", cmd, status)),
+            Err(e) => Err(format!("Process wait error: {}", e)),
         }
-        Ok(_) => {
-            if cmd == "xclip" {
-                std::thread::spawn(move || {
-                    let _ = child.wait();
-                });
-            }
-            Ok(())
-        }
-        Err(e) => Err(format!("Process status check failed: {}", e)),
     }
 }
 
+/// Helper to write raw bytes (images) via external command fallback (X11 only)
 fn set_clipboard_external_bytes(cmd: &str, args: &[&str], data: &[u8]) -> Result<(), String> {
-    use std::io::Read;
-    
-    let owner_before = clipboard_owner();
+    if !command_exists(cmd) {
+        return Err(format!("Command '{}' not found", cmd));
+    }
 
     let mut child = Command::new(cmd)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", cmd, e))?;
 
@@ -188,31 +118,17 @@ fn set_clipboard_external_bytes(cmd: &str, args: &[&str], data: &[u8]) -> Result
             .map_err(|e| format!("Pipe write error: {}", e))?;
     }
 
-    // Wait for the helper to acquire the selection
-    settle_clipboard_handoff(owner_before, std::time::Duration::from_millis(50));
-
-    match child.try_wait() {
-        Ok(Some(status)) if !status.success() => {
-            let mut stderr = String::new();
-            if let Some(mut stderr_pipe) = child.stderr.take() {
-                let _ = stderr_pipe.read_to_string(&mut stderr);
-            }
-            Err(format!(
-                "{} exited with status {}. Stderr: {}",
-                cmd,
-                status,
-                stderr.trim()
-            ))
+    if cmd == "xclip" {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(())
+    } else {
+        match child.wait() {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => Err(format!("{} exited with status {}", cmd, status)),
+            Err(e) => Err(format!("Process wait error: {}", e)),
         }
-        Ok(_) => {
-            if cmd == "xclip" {
-                std::thread::spawn(move || {
-                    let _ = child.wait();
-                });
-            }
-            Ok(())
-        }
-        Err(e) => Err(format!("Process status check failed: {}", e)),
     }
 }
 
@@ -221,27 +137,19 @@ pub fn set_text_robust(text: &str) -> Result<(), String> {
     let hash = calculate_hash(text);
     LAST_TEXT_HASH.store(hash, Ordering::SeqCst);
 
-    // Prefer external utilities on Linux to avoid losing selection on drop
-    if !is_x11() {
-        if set_clipboard_external(
-            "wl-copy",
-            &["--type", "text/plain;charset=utf-8"],
-            text,
-        ).is_ok() {
-            return Ok(());
-        }
-    } else {
-        if set_clipboard_external(
-            "xclip",
-            &["-selection", "clipboard", "-t", "UTF8_STRING"],
-            text,
-        ).is_ok() {
+    // Primary: in-process arboard
+    if let Ok(()) = with_clipboard(|ctx| ctx.set_text(text.to_owned())) {
+        return Ok(());
+    }
+
+    // Secondary fallback on X11
+    if is_x11() {
+        if set_clipboard_external("xclip", &["-selection", "clipboard", "-t", "UTF8_STRING"], text).is_ok() {
             return Ok(());
         }
     }
 
-    // Fallback to persistent arboard context
-    with_clipboard(|ctx| ctx.set_text(text.to_owned()))
+    Err("Failed to set clipboard text".to_string())
 }
 
 /// Robustly set HTML content to clipboard
@@ -249,30 +157,20 @@ pub fn set_html_robust(html: &str, plain: &str) -> Result<(), String> {
     let hash = calculate_hash(plain);
     LAST_TEXT_HASH.store(hash, Ordering::SeqCst);
 
-    // Prefer external utilities on Linux to avoid losing selection on drop
-    let mut set_external_success = false;
-    if !is_x11() {
-        if set_clipboard_external("wl-copy", &["--type", "text/html"], html).is_ok() {
-            let _ = set_text_robust(plain);
-            set_external_success = true;
-        }
-    } else {
-        if set_clipboard_external(
-            "xclip",
-            &["-selection", "clipboard", "-t", "text/html"],
-            html,
-        ).is_ok() {
-            let _ = set_text_robust(plain);
-            set_external_success = true;
-        }
-    }
-
-    if set_external_success {
+    // Primary: in-process arboard
+    if let Ok(()) = with_clipboard(|ctx| ctx.set_html(html.to_owned(), Some(plain.to_owned()))) {
         return Ok(());
     }
 
-    // Fallback to persistent arboard context
-    with_clipboard(|ctx| ctx.set_html(html.to_owned(), Some(plain.to_owned())))
+    // Secondary fallback on X11
+    if is_x11() {
+        if set_clipboard_external("xclip", &["-selection", "clipboard", "-t", "text/html"], html).is_ok() {
+            let _ = set_text_robust(plain);
+            return Ok(());
+        }
+    }
+
+    Err("Failed to set clipboard HTML".to_string())
 }
 
 /// Struct containing raw RGBA image dimensions and pixels
@@ -283,7 +181,7 @@ pub struct ImageRaw {
     pub bytes: Vec<u8>,
 }
 
-/// Read image data from clipboard
+/// Read image data from clipboard in-process
 pub fn get_current_image() -> Result<Option<(ImageRaw, u64)>, String> {
     let mut ctx = match Clipboard::new() {
         Ok(c) => c,
@@ -316,27 +214,6 @@ pub fn set_image_robust(base64_str: &str, _width: u32, _height: u32) -> Result<(
     let hash = calculate_hash(&bytes);
     LAST_IMAGE_HASH.store(hash, Ordering::SeqCst);
 
-    // Prefer external utilities on Linux to avoid losing selection on drop
-    let mut set_external_success = false;
-    if !is_x11() {
-        if set_clipboard_external_bytes("wl-copy", &["--type", "image/png"], &bytes).is_ok() {
-            set_external_success = true;
-        }
-    } else {
-        if set_clipboard_external_bytes(
-            "xclip",
-            &["-selection", "clipboard", "-t", "image/png"],
-            &bytes,
-        ).is_ok() {
-            set_external_success = true;
-        }
-    }
-
-    if set_external_success {
-        return Ok(());
-    }
-
-    // Fallback to persistent arboard context
     let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
     let rgba = img.to_rgba8();
 
@@ -346,7 +223,19 @@ pub fn set_image_robust(base64_str: &str, _width: u32, _height: u32) -> Result<(
         bytes: Cow::Owned(rgba.into_raw()),
     };
 
-    with_clipboard(|ctx| ctx.set_image(img_data.clone()))
+    // Primary: in-process arboard
+    if let Ok(()) = with_clipboard(|ctx| ctx.set_image(img_data.clone())) {
+        return Ok(());
+    }
+
+    // Secondary fallback on X11
+    if is_x11() {
+        if set_clipboard_external_bytes("xclip", &["-selection", "clipboard", "-t", "image/png"], &bytes).is_ok() {
+            return Ok(());
+        }
+    }
+
+    Err("Failed to write clipboard image".to_string())
 }
 
 /// Converts raw RGBA pixels to a Base64-encoded PNG image
@@ -369,8 +258,7 @@ pub fn calculate_hash<T: Hash + ?Sized>(t: &T) -> u64 {
     s.finish()
 }
 
-/// Public API to push extracted text (e.g. from OCR or external modules)
-/// into both the active OS clipboard and the SQLite history database.
+/// Public API to push extracted text into both the active OS clipboard and the SQLite history database
 pub fn push_extracted_text(
     text: &str,
     db: &std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>,
@@ -385,8 +273,8 @@ pub fn push_extracted_text(
 
     // 2. Add item to SQLite database
     let conn = db.lock();
-    let preview = if trimmed.len() > 100 {
-        format!("{}...", &trimmed[..100])
+    let preview = if trimmed.chars().count() > 100 {
+        format!("{}...", trimmed.chars().take(100).collect::<String>())
     } else {
         trimmed.to_string()
     };

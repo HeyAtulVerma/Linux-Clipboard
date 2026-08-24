@@ -1,9 +1,10 @@
 [package]
 name = "magictoys"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Antigravity"]
 edition = "2021"
 description = "MagicToys — Native Clipboard, Emoji, and OCR tools for Linux"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 # UI Framework
@@ -13,7 +14,7 @@ i-slint-backend-winit = "1.9"
 # Clipboard Integration
 arboard = { version = "3.4", features = ["image-data", "wayland-data-control"] }
 
-# SQLite database
+# SQLite database (bundled pure C/Rust SQLite to avoid system sqlite3 version mismatch)
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Async runtime
@@ -23,7 +24,7 @@ tokio = { version = "1.38", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Image processing for screenshot clips
+# Image processing for screenshot clips and OCR preprocessing
 image = "0.25"
 png = "0.17"
 base64 = "0.22"
@@ -43,16 +44,9 @@ libc = "0.2"
 # Emojis database helper
 emojis = "0.6"
 
-# DBus integration (for theme changes and system desktop notifications)
-zbus = { version = "4", default-features = false, features = ["tokio"] }
-futures-lite = "2"
-
-# System Tray support
-tray-icon = { version = "0.19", default-features = false }
-gtk = "0.18"
-
-# OCR Engine (Tesseract C-API)
-leptess = "0.14"
+# DBus integration and Portal client (pure async-io executor to prevent Tokio reactor conflict on Slint main loop)
+ksni = "0.2"
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "screenshot"] }
 
 [build-dependencies]
 slint-build = "1.9"

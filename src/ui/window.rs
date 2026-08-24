@@ -1,10 +1,26 @@
 //! Window management and positioning logic using winit integrations
+//! Handles positioning near cursor, Wayland/X11 app IDs, dock matching, and window icons.
 
 use slint::ComponentHandle;
 use crate::backend::simulator::{get_cursor_position, is_x11};
 use i_slint_backend_winit::winit::dpi::PhysicalPosition;
 use i_slint_backend_winit::winit::window::WindowLevel;
 use i_slint_backend_winit::WinitWindowAccessor;
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
+
+const ICON_BYTES: &[u8] = include_bytes!("../../icon.png");
+
+/// Loads and applies the application icon to the winit window
+fn apply_window_icon(winit_win: &i_slint_backend_winit::winit::window::Window) {
+    if let Ok(img) = image::load_from_memory(ICON_BYTES) {
+        let rgba = img.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        if let Ok(icon) = i_slint_backend_winit::winit::window::Icon::from_rgba(rgba.into_raw(), width, height) {
+            winit_win.set_window_icon(Some(icon));
+        }
+    }
+}
 
 /// Positions the Slint application window near the mouse cursor, clamped to monitor bounds
 pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
@@ -12,6 +28,10 @@ pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
     let cursor_pos = get_cursor_position();
     
     window.with_winit_window(move |winit_win| {
+        // Set window title and icon
+        winit_win.set_title("MagicToys");
+        apply_window_icon(winit_win);
+
         let monitor = winit_win.current_monitor().or_else(|| winit_win.primary_monitor());
         
         let (m_x, m_y, m_w, m_h) = if let Some(m) = monitor {
@@ -42,11 +62,10 @@ pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
         winit_win.set_outer_position(PhysicalPosition::new(target_x, target_y));
         
         // Linux specific tweaks:
-        // For X11, borderless windows work best when kept on top or manually activated
         if is_x11() {
             winit_win.set_window_level(WindowLevel::AlwaysOnTop);
             
-            // Try to skip taskbar/dock to prevent dock shaking
+            // Set X11 WM_CLASS to match desktop file
             use i_slint_backend_winit::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
             if let Ok(handle) = winit_win.window_handle() {
                 let xid_u32 = match handle.as_raw() {
@@ -57,7 +76,6 @@ pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
                 if let Some(xid) = xid_u32 {
                     use x11rb::protocol::xproto::ConnectionExt;
                     if let Ok((conn, _)) = x11rb::connect(None) {
-                        // 1. Set WM_CLASS to match the desktop file and prevent "Unknown" in dock
                         let class_data = b"magictoys\0magictoys\0";
 
                         let _ = conn.change_property(
@@ -70,7 +88,6 @@ pub fn position_window<T: ComponentHandle + 'static>(app: &T) {
                             class_data,
                         );
 
-                        // 2. Set _NET_WM_STATE_SKIP_TASKBAR using REPLACE mode to prevent property duplication
                         if let Ok(reply_state) = conn.intern_atom(false, b"_NET_WM_STATE") {
                             if let Ok(reply_skip) = conn.intern_atom(false, b"_NET_WM_STATE_SKIP_TASKBAR") {
                                 if let (Ok(r_state), Ok(r_skip)) = (reply_state.reply(), reply_skip.reply()) {
@@ -101,10 +118,6 @@ pub fn setup_focus_loss_listener(app: &crate::AppWindow) -> slint::Timer {
     let timer = slint::Timer::default();
     let weak_app = app.as_weak();
     
-    // We track whether the window has received focus since it was made visible.
-    // We also track ticks to give the window manager time to map the window and settle focus.
-    // On first open the WM may take 500ms–1s+ to raise & focus the window, so we use a
-    // generous 25-tick (2.5s) grace window before we start watching for focus loss.
     let mut has_had_focus = false;
     let mut visible_ticks = 0;
     
@@ -124,10 +137,10 @@ pub fn setup_focus_loss_listener(app: &crate::AppWindow) -> slint::Timer {
                     }
                     
                     // Only auto-hide when:
-                    //  - Grace period has expired (25 ticks = 2.5s)
+                    //  - Grace period has expired (20 ticks = 2s)
                     //  - We confirmed the window was focused at least once
                     //  - Focus is now lost
-                    if visible_ticks > 25 && has_had_focus && !is_focused {
+                    if visible_ticks > 20 && has_had_focus && !is_focused {
                         let _ = app.window().hide();
                         app.invoke_reset_state();
                         has_had_focus = false;
@@ -142,4 +155,48 @@ pub fn setup_focus_loss_listener(app: &crate::AppWindow) -> slint::Timer {
     );
     
     timer
+}
+
+/// Positions and sizes the Snipping Overlay to cover the full active display
+pub fn position_overlay_fullscreen<T: ComponentHandle + 'static>(overlay: &T) {
+    let window = overlay.window();
+    window.with_winit_window(move |winit_win| {
+        winit_win.set_title("MagicToys Snipping");
+        winit_win.set_window_level(WindowLevel::AlwaysOnTop);
+        winit_win.set_decorations(false);
+
+        let monitor = winit_win.current_monitor().or_else(|| winit_win.primary_monitor());
+        if let Some(m) = monitor {
+            let pos = m.position();
+            let size = m.size();
+            winit_win.set_outer_position(PhysicalPosition::new(pos.x, pos.y));
+            let _ = winit_win.request_inner_size(i_slint_backend_winit::winit::dpi::PhysicalSize::new(size.width, size.height));
+        }
+
+        // On X11, set class and properties
+        if is_x11() {
+            use i_slint_backend_winit::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(handle) = winit_win.window_handle() {
+                let xid_u32 = match handle.as_raw() {
+                    RawWindowHandle::Xlib(xlib_handle) => Some(xlib_handle.window as u32),
+                    RawWindowHandle::Xcb(xcb_handle) => Some(xcb_handle.window.get()),
+                    _ => None,
+                };
+                if let Some(xid) = xid_u32 {
+                    if let Ok((conn, screen_num)) = x11rb::connect(None) {
+                        let _screen = &conn.setup().roots[screen_num];
+                        let _ = conn.change_property(
+                            x11rb::protocol::xproto::PropMode::REPLACE,
+                            xid,
+                            x11rb::protocol::xproto::AtomEnum::WM_CLASS,
+                            x11rb::protocol::xproto::AtomEnum::STRING,
+                            8,
+                            b"magictoys\0magictoys\0".len() as u32,
+                            b"magictoys\0magictoys\0",
+                        );
+                    }
+                }
+            }
+        }
+    });
 }
