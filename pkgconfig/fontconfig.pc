@@ -1,0 +1,10 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=/home/fed/Projects/MagicToys/pkgconfig/lib
+includedir=${prefix}/include
+
+Name: Fontconfig
+Description: Font configuration and customization library
+Version: 2.16.0
+Libs: -L${libdir} -lfontconfig
+Cflags: -I${includedir}

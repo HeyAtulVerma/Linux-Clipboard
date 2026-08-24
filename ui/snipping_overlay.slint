@@ -1,0 +1,193 @@
+// MagicToys — Windows 11 Style Snipping & Text Extractor Overlay
+// Fullscreen translucent dark veil with precision crosshair cursor, Fluent top pill, and live drag selection box.
+
+export component SnippingOverlay inherits Window {
+    title: "MagicToys Snipping";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+
+    // Callbacks
+    callback selection-completed(length, length, length, length);
+    callback selection-cancelled();
+
+    in-out property <bool> is-selecting: false;
+    in-out property <length> start-x: 0px;
+    in-out property <length> start-y: 0px;
+    in-out property <length> current-x: 0px;
+    in-out property <length> current-y: 0px;
+
+    // Computed selection rectangle bounds
+    property <length> box-x: min(root.start-x, root.current-x);
+    property <length> box-y: min(root.start-y, root.current-y);
+    property <length> box-w: max(abs(root.current-x - root.start-x), 0px);
+    property <length> box-h: max(abs(root.current-y - root.start-y), 0px);
+
+    // Keyboard listener for Escape key to cancel
+    forward-focus: key-handler;
+    key-handler := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.selection-cancelled();
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+
+    // 1. Translucent Dim Overlay (Windows 11 dark veil over actual live desktop)
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000066;
+    }
+
+    // 2. Top Floating Instruction Pill (Windows 11 Fluent style)
+    HorizontalLayout {
+        alignment: center;
+        y: 28px;
+        z: 100;
+
+        Rectangle {
+            height: 38px;
+            background: #1e1e1ef0;
+            border-radius: 19px;
+            border-width: 1px;
+            border-color: #ffffff2e;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000088;
+            drop-shadow-offset-y: 4px;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 10px;
+                alignment: center;
+
+                // Precision icon
+                Text {
+                    text: "✛";
+                    color: #60cdff;
+                    font-size: 16px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "Click and drag to extract text";
+                    color: #f3f3f3;
+                    font-size: 13px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 14px;
+                    background: #ffffff33;
+                }
+
+                Text {
+                    text: "Esc to cancel";
+                    color: #a0a0a0;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // 3. Interactive Drag Selection Box
+    if (root.is-selecting && root.box-w > 2px && root.box-h > 2px) : Rectangle {
+        x: root.box-x;
+        y: root.box-y;
+        width: root.box-w;
+        height: root.box-h;
+        border-width: 2px;
+        border-color: #60cdff;
+        background: #60cdff18;
+        clip: false;
+
+        // Subtle glowing accent outline
+        Rectangle {
+            x: -1px;
+            y: -1px;
+            width: parent.width + 2px;
+            height: parent.height + 2px;
+            border-width: 1px;
+            border-color: #ffffff99;
+            background: transparent;
+        }
+
+        // Live dimension badge at bottom of selection
+        if (root.box-w > 60px && root.box-h > 30px) : Rectangle {
+            x: max(0px, (parent.width - self.width) / 2);
+            y: parent.height + 8px;
+            height: 22px;
+            background: #181818ee;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #ffffff22;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                alignment: center;
+
+                Text {
+                    text: "\{Math.round(root.box-w / 1px)} × \{Math.round(root.box-h / 1px)}";
+                    color: #60cdff;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // 4. Fullscreen Touch/Mouse Area with Precision Crosshair Cursor
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: crosshair;
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                root.start-x = self.mouse-x;
+                root.start-y = self.mouse-y;
+                root.current-x = self.mouse-x;
+                root.current-y = self.mouse-y;
+                root.is-selecting = true;
+            } else if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                // Right click cancels selection
+                root.selection-cancelled();
+            } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                if (root.is-selecting) {
+                    root.is-selecting = false;
+                    root.current-x = self.mouse-x;
+                    root.current-y = self.mouse-y;
+
+                    let final-x = root.box-x;
+                    let final-y = root.box-y;
+                    let final-w = root.box-w;
+                    let final-h = root.box-h;
+
+                    // Only trigger if selection is meaningful (> 5px)
+                    if (final-w >= 5px && final-h >= 5px) {
+                        root.selection-completed(final-x, final-y, final-w, final-h);
+                    } else {
+                        root.selection-cancelled();
+                    }
+                }
+            }
+        }
+
+        moved => {
+            if (root.is-selecting) {
+                root.current-x = self.mouse-x;
+                root.current-y = self.mouse-y;
+            }
+        }
+    }
+}

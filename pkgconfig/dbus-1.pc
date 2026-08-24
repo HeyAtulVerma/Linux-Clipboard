@@ -1,0 +1,10 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=/home/fed/Projects/MagicToys/pkgconfig/lib
+includedir=${prefix}/include
+
+Name: dbus
+Description: Free desktop message bus
+Version: 1.14.10
+Libs: -L${libdir} -ldbus-1
+Cflags: -I${includedir}
