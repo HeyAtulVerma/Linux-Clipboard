@@ -1,0 +1,497 @@
+// MagicToys — Windows 11 PowerToys Style Color Inspector / Editor Window
+// Displays large color swatch, tonal shade variations, multi-format codes (HEX, RGB, HSL, HSV, CMYK) with one-click copy, and color history.
+
+export struct ColorSwatchItem {
+    hex: string,
+    color: color,
+}
+
+export component ColorEditorWindow inherits Window {
+    title: "MagicToys Color Inspector";
+    width: 360px;
+    height: 520px;
+    background: #1c1c1ce8;
+    no-frame: false;
+
+    // Callbacks
+    callback copy-color-format(string);
+    callback select-history-color(string);
+    callback close-requested();
+
+    // Data Properties
+    in-out property <color> current-color: #6366F1;
+    in-out property <string> current-hex: "#6366F1";
+    in-out property <string> current-rgb: "rgb(99, 102, 241)";
+    in-out property <string> current-hsl: "hsl(238, 83%, 67%)";
+    in-out property <string> current-hsv: "hsv(238, 59%, 95%)";
+    in-out property <string> current-cmyk: "cmyk(59%, 58%, 0%, 5%)";
+
+    in-out property <[ColorSwatchItem]> shades: [];
+    in-out property <[ColorSwatchItem]> recent-colors: [];
+
+    // Visual Copy Feedback Property
+    in-out property <string> copied-format: "";
+
+    Timer {
+        interval: 1500ms;
+        running: root.copied-format != "";
+        triggered => {
+            root.copied-format = "";
+        }
+    }
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 14px;
+
+        // 1. Header: Color Swatch + Title
+        HorizontalLayout {
+            spacing: 12px;
+            height: 64px;
+
+            // Large Color Swatch
+            Rectangle {
+                width: 64px;
+                height: 64px;
+                border-radius: 8px;
+                background: root.current-color;
+                border-width: 1px;
+                border-color: #ffffff33;
+                drop-shadow-blur: 8px;
+                drop-shadow-color: #00000044;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+
+                Text {
+                    text: root.current-hex;
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: #ffffff;
+                }
+
+                Text {
+                    text: "Color Inspector";
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #a0a0a0;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            // Quick Copy Primary HEX Button
+            VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 6px;
+                    background: (root.copied-format == "PRIMARY") ? #10b98133 : (copy-hover.has-hover ? #ffffff22 : #ffffff12);
+                    border-width: 1px;
+                    border-color: (root.copied-format == "PRIMARY") ? #10b981 : #ffffff22;
+
+                    copy-hover := TouchArea {
+                        clicked => {
+                            root.copied-format = "PRIMARY";
+                            root.copy-color-format(root.current-hex);
+                        }
+                    }
+
+                    Text {
+                        text: (root.copied-format == "PRIMARY") ? "✓" : "📋";
+                        font-size: 15px;
+                        color: (root.copied-format == "PRIMARY") ? #34d399 : #ffffff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // 2. Tonal Shades & Tints Palette Strip
+        VerticalLayout {
+            spacing: 6px;
+
+            Text {
+                text: "Tonal Shades";
+                font-size: 11px;
+                font-weight: 600;
+                color: #888888;
+            }
+
+            HorizontalLayout {
+                spacing: 4px;
+                height: 24px;
+
+                for shade in root.shades : Rectangle {
+                    border-radius: 4px;
+                    background: shade.color;
+                    border-width: 1px;
+                    border-color: #ffffff33;
+                    clip: true;
+
+                    TouchArea {
+                        clicked => {
+                            root.select-history-color(shade.hex);
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: #ffffff14;
+        }
+
+        // 3. Multi-Format Color Values List
+        VerticalLayout {
+            spacing: 8px;
+            vertical-stretch: 1;
+
+            // Format Row: HEX
+            HorizontalLayout {
+                height: 36px;
+                spacing: 8px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #141414aa;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #ffffff18;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+
+                        Text {
+                            text: "HEX";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #60cdff;
+                            vertical-alignment: center;
+                            width: 48px;
+                        }
+
+                        Text {
+                            text: root.current-hex;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #f0f0f0;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 60px;
+                    background: (root.copied-format == "HEX") ? #10b98133 : (hex-btn.has-hover ? #2a2a2a : #222222);
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: (root.copied-format == "HEX") ? #10b981 : #ffffff22;
+
+                    hex-btn := TouchArea {
+                        clicked => {
+                            root.copied-format = "HEX";
+                            root.copy-color-format(root.current-hex);
+                        }
+                    }
+
+                    Text {
+                        text: (root.copied-format == "HEX") ? "✓" : "Copy";
+                        font-size: (root.copied-format == "HEX") ? 13px : 11px;
+                        font-weight: 600;
+                        color: (root.copied-format == "HEX") ? #34d399 : #ffffff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // Format Row: RGB
+            HorizontalLayout {
+                height: 36px;
+                spacing: 8px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #141414aa;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #ffffff18;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+
+                        Text {
+                            text: "RGB";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #60cdff;
+                            vertical-alignment: center;
+                            width: 48px;
+                        }
+
+                        Text {
+                            text: root.current-rgb;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #f0f0f0;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 60px;
+                    background: (root.copied-format == "RGB") ? #10b98133 : (rgb-btn.has-hover ? #2a2a2a : #222222);
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: (root.copied-format == "RGB") ? #10b981 : #ffffff22;
+
+                    rgb-btn := TouchArea {
+                        clicked => {
+                            root.copied-format = "RGB";
+                            root.copy-color-format(root.current-rgb);
+                        }
+                    }
+
+                    Text {
+                        text: (root.copied-format == "RGB") ? "✓" : "Copy";
+                        font-size: (root.copied-format == "RGB") ? 13px : 11px;
+                        font-weight: 600;
+                        color: (root.copied-format == "RGB") ? #34d399 : #ffffff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // Format Row: HSL
+            HorizontalLayout {
+                height: 36px;
+                spacing: 8px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #141414aa;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #ffffff18;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+
+                        Text {
+                            text: "HSL";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #60cdff;
+                            vertical-alignment: center;
+                            width: 48px;
+                        }
+
+                        Text {
+                            text: root.current-hsl;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #f0f0f0;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 60px;
+                    background: (root.copied-format == "HSL") ? #10b98133 : (hsl-btn.has-hover ? #2a2a2a : #222222);
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: (root.copied-format == "HSL") ? #10b981 : #ffffff22;
+
+                    hsl-btn := TouchArea {
+                        clicked => {
+                            root.copied-format = "HSL";
+                            root.copy-color-format(root.current-hsl);
+                        }
+                    }
+
+                    Text {
+                        text: (root.copied-format == "HSL") ? "✓" : "Copy";
+                        font-size: (root.copied-format == "HSL") ? 13px : 11px;
+                        font-weight: 600;
+                        color: (root.copied-format == "HSL") ? #34d399 : #ffffff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // Format Row: HSV
+            HorizontalLayout {
+                height: 36px;
+                spacing: 8px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #141414aa;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #ffffff18;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+
+                        Text {
+                            text: "HSV";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #60cdff;
+                            vertical-alignment: center;
+                            width: 48px;
+                        }
+
+                        Text {
+                            text: root.current-hsv;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #f0f0f0;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 60px;
+                    background: (root.copied-format == "HSV") ? #10b98133 : (hsv-btn.has-hover ? #2a2a2a : #222222);
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: (root.copied-format == "HSV") ? #10b981 : #ffffff22;
+
+                    hsv-btn := TouchArea {
+                        clicked => {
+                            root.copied-format = "HSV";
+                            root.copy-color-format(root.current-hsv);
+                        }
+                    }
+
+                    Text {
+                        text: (root.copied-format == "HSV") ? "✓" : "Copy";
+                        font-size: (root.copied-format == "HSV") ? 13px : 11px;
+                        font-weight: 600;
+                        color: (root.copied-format == "HSV") ? #34d399 : #ffffff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // Format Row: CMYK
+            HorizontalLayout {
+                height: 36px;
+                spacing: 8px;
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: #141414aa;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: #ffffff18;
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+
+                        Text {
+                            text: "CMYK";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #60cdff;
+                            vertical-alignment: center;
+                            width: 48px;
+                        }
+
+                        Text {
+                            text: root.current-cmyk;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #f0f0f0;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 60px;
+                    background: (root.copied-format == "CMYK") ? #10b98133 : (cmyk-btn.has-hover ? #2a2a2a : #222222);
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: (root.copied-format == "CMYK") ? #10b981 : #ffffff22;
+
+                    cmyk-btn := TouchArea {
+                        clicked => {
+                            root.copied-format = "CMYK";
+                            root.copy-color-format(root.current-cmyk);
+                        }
+                    }
+
+                    Text {
+                        text: (root.copied-format == "CMYK") ? "✓" : "Copy";
+                        font-size: (root.copied-format == "CMYK") ? 13px : 11px;
+                        font-weight: 600;
+                        color: (root.copied-format == "CMYK") ? #34d399 : #ffffff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // 4. Color History Strip
+        if (root.recent-colors.length > 0) : VerticalLayout {
+            spacing: 6px;
+
+            Text {
+                text: "Recently Picked Colors";
+                font-size: 11px;
+                font-weight: 600;
+                color: #888888;
+            }
+
+            HorizontalLayout {
+                spacing: 6px;
+                height: 22px;
+
+                for recent in root.recent-colors : Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: recent.color;
+                    border-width: 1.5px;
+                    border-color: #ffffff44;
+                    clip: true;
+
+                    TouchArea {
+                        clicked => {
+                            root.select-history-color(recent.hex);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

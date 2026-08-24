@@ -21,11 +21,16 @@ export component MainWindow inherits Window {
     in-out property <bool> enable-clipboard: false;
     in-out property <bool> enable-emoji: false;
     in-out property <bool> enable-ocr: false;
+    in-out property <bool> enable-color-picker: false;
 
     in-out property <int> history-count: 0;
     in-out property <bool> clip-has-conflict: false;
     in-out property <bool> emoji-has-conflict: false;
     in-out property <bool> ocr-has-conflict: false;
+    in-out property <bool> color-picker-has-conflict: false;
+    in-out property <bool> color-picker-show-editor: true;
+    in-out property <bool> color-picker-auto-copy: true;
+    in-out property <string> color-picker-default-format: "HEX";
     in-out property <string> accent-hex: "#f97316";
 
     // Design tokens — Ople black palette
@@ -53,6 +58,10 @@ export component MainWindow inherits Window {
     callback toggle-clipboard(bool);
     callback toggle-emoji(bool);
     callback toggle-ocr(bool);
+    callback toggle-color-picker(bool);
+    callback toggle-color-editor-window(bool);
+    callback toggle-color-auto-copy(bool);
+    callback set-color-default-format(string);
     callback fix-single-shortcut(string);
     callback clear-history();
     callback open-url(string);
@@ -191,12 +200,32 @@ export component MainWindow inherits Window {
                     }
                 }
 
+                nav-color := TouchArea {
+                    height: 38px;
+                    clicked => { root.active-section = 4; }
+                    Rectangle {
+                        background: root.active-section == 4 ? accent : (nav-color.has-hover ? card-hover-bg : transparent);
+                        border-radius: 6px;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            spacing: 10px;
+                            Text {
+                                text: "Color Picker";
+                                font-size: 14px;
+                                font-weight: root.active-section == 4 ? 700 : 400;
+                                color: root.active-section == 4 ? #ffffff : text-color;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
                 // Spacer pushes version badge down to stick as a footer
                 Rectangle {
                     vertical-stretch: 1;
                 }
 
-                // Version badge: v0.0.4 with green Beta pill (sticking to bottom footer)
+                // Version badge: v0.0.41 with green Beta pill (sticking to bottom footer)
                 HorizontalLayout {
                     alignment: center;
                     spacing: 6px;
@@ -205,7 +234,7 @@ export component MainWindow inherits Window {
                     VerticalLayout {
                         alignment: center;
                         Text {
-                            text: "v0.0.4";
+                            text: "v0.0.41";
                             font-size: 13px;
                             font-weight: 500;
                             color: text-muted;
@@ -988,6 +1017,288 @@ export component MainWindow inherits Window {
                                     text: "Shortcut conflict detected with system keybindings";
                                     font-size: 13px;
                                     color: danger-color;
+                                }
+                            }
+                        }
+                    }
+
+                    // ═══════════════════════════════
+                    // SECTION 4: COLOR PICKER
+                    // ═══════════════════════════════
+                    if (root.active-section == 4): VerticalLayout {
+                        spacing: 14px;
+
+                        // Card 1: Master Enable & Shortcut
+                        Rectangle {
+                            background: (root.enable-color-picker && root.color-picker-has-conflict) ? (is-dark ? #1a0d0d : #fff5f5) : card-bg;
+                            border-radius: 8px;
+                            border-width: (root.enable-color-picker && root.color-picker-has-conflict) ? 1.5px : 1px;
+                            border-color: (root.enable-color-picker && root.color-picker-has-conflict) ? danger-color : border-color;
+
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 12px;
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Color Picker";
+                                            font-size: 14px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
+
+                                        Text {
+                                            text: "Magnify and sample pixel colors from anywhere — shortcut: Alt + Shift + C";
+                                            font-size: 13px;
+                                            color: text-muted;
+                                        }
+                                    }
+
+                                    toggle-color-sw := TouchArea {
+                                        width: 44px;
+                                        height: 24px;
+                                        clicked => {
+                                            root.enable-color-picker = !root.enable-color-picker;
+                                            root.toggle-color-picker(root.enable-color-picker);
+                                        }
+                                        Rectangle {
+                                            background: root.enable-color-picker ? accent : card-hover-bg;
+                                            border-radius: 12px;
+                                            border-width: 1px;
+                                            border-color: root.enable-color-picker ? accent : border-color;
+                                            Rectangle {
+                                                x: root.enable-color-picker ? 22px : 2px;
+                                                y: 2px;
+                                                width: 18px;
+                                                height: 18px;
+                                                border-radius: 9px;
+                                                background: #ffffff;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text {
+                                        text: "Global Shortcut";
+                                        font-size: 13px;
+                                        color: text-muted;
+                                        vertical-alignment: center;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Rectangle {
+                                            background: card-hover-bg;
+                                            border-radius: 4px;
+                                            border-width: 1px;
+                                            border-color: border-color;
+                                            height: 22px;
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                Text {
+                                                    text: "Alt + Shift + C";
+                                                    font-size: 13px;
+                                                    font-weight: 700;
+                                                    color: accent;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+
+                                        if (root.enable-color-picker && root.color-picker-has-conflict): fix-color := TouchArea {
+                                            width: 90px;
+                                            height: 22px;
+                                            clicked => { root.fix-single-shortcut("color"); }
+                                            Rectangle {
+                                                background: fix-color.has-hover ? #dc2626 : danger-color;
+                                                border-radius: 4px;
+                                                Text {
+                                                    text: "Fix Shortcut";
+                                                    font-size: 12px;
+                                                    font-weight: 700;
+                                                    color: #ffffff;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (root.enable-color-picker && root.color-picker-has-conflict): Text {
+                                    text: "Shortcut conflict detected with system keybindings";
+                                    font-size: 13px;
+                                    color: danger-color;
+                                }
+                            }
+                        }
+
+                        // Card 2: Color Picker Behaviors & Instant Copy Settings
+                        Rectangle {
+                            background: card-bg;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: border-color;
+
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 16px;
+
+                                Text {
+                                    text: "Picking Behaviors";
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    color: text-color;
+                                }
+
+                                // Setting: Show color editor after picking
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Show Color Inspector Window";
+                                            font-size: 13px;
+                                            font-weight: 500;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "Opens the multi-format color details window after clicking a pixel";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
+                                    }
+
+                                    toggle-editor-sw := TouchArea {
+                                        width: 44px;
+                                        height: 24px;
+                                        clicked => {
+                                            root.color-picker-show-editor = !root.color-picker-show-editor;
+                                            root.toggle-color-editor-window(root.color-picker-show-editor);
+                                        }
+                                        Rectangle {
+                                            background: root.color-picker-show-editor ? accent : card-hover-bg;
+                                            border-radius: 12px;
+                                            border-width: 1px;
+                                            border-color: root.color-picker-show-editor ? accent : border-color;
+                                            Rectangle {
+                                                x: root.color-picker-show-editor ? 22px : 2px;
+                                                y: 2px;
+                                                width: 18px;
+                                                height: 18px;
+                                                border-radius: 9px;
+                                                background: #ffffff;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle { height: 1px; background: border-color; }
+
+                                // Setting: Copy color instantly on pick
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Copy Color Instantly";
+                                            font-size: 13px;
+                                            font-weight: 500;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "Copies the selected color code to clipboard immediately on click";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
+                                    }
+
+                                    toggle-copy-sw := TouchArea {
+                                        width: 44px;
+                                        height: 24px;
+                                        clicked => {
+                                            root.color-picker-auto-copy = !root.color-picker-auto-copy;
+                                            root.toggle-color-auto-copy(root.color-picker-auto-copy);
+                                        }
+                                        Rectangle {
+                                            background: root.color-picker-auto-copy ? accent : card-hover-bg;
+                                            border-radius: 12px;
+                                            border-width: 1px;
+                                            border-color: root.color-picker-auto-copy ? accent : border-color;
+                                            Rectangle {
+                                                x: root.color-picker-auto-copy ? 22px : 2px;
+                                                y: 2px;
+                                                width: 18px;
+                                                height: 18px;
+                                                border-radius: 9px;
+                                                background: #ffffff;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle { height: 1px; background: border-color; }
+
+                                // Setting: Default Color Format Dropdown / Selector
+                                HorizontalLayout {
+                                    alignment: space-between;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Default Color Format";
+                                            font-size: 13px;
+                                            font-weight: 500;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "The color format copied automatically to clipboard";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
+                                    }
+
+                                    // Format selector pills (HEX, RGB, HSL, HSV, CMYK)
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        height: 28px;
+
+                                        for fmt in ["HEX", "RGB", "HSL", "HSV", "CMYK"] : Rectangle {
+                                            background: root.color-picker-default-format == fmt ? accent : card-hover-bg;
+                                            border-radius: 5px;
+                                            border-width: 1px;
+                                            border-color: root.color-picker-default-format == fmt ? accent : border-color;
+
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                alignment: center;
+                                                Text {
+                                                    text: fmt;
+                                                    font-size: 11px;
+                                                    font-weight: 700;
+                                                    color: root.color-picker-default-format == fmt ? #ffffff : text-color;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+
+                                            TouchArea {
+                                                clicked => {
+                                                    root.color-picker-default-format = fmt;
+                                                    root.set-color-default-format(fmt);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

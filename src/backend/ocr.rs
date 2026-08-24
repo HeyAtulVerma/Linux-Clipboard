@@ -14,72 +14,20 @@ pub static IS_OCR_RUNNING: AtomicBool = AtomicBool::new(false);
 /// Flag indicating whether the Snipping Overlay is currently open on screen.
 pub static IS_SNIPPING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-static SNIPPING_OVERLAY: Lazy<Mutex<Option<slint::Weak<crate::SnippingOverlay>>>> = Lazy::new(|| Mutex::new(None));
+thread_local! {
+    static ACTIVE_SNIP: std::cell::RefCell<Option<(crate::SnippingOverlay, slint::Timer)>> = std::cell::RefCell::new(None);
+}
+static SNIPPING_SNAPSHOT: Lazy<Mutex<Option<image::RgbaImage>>> = Lazy::new(|| Mutex::new(None));
+static OCR_DB: Lazy<Mutex<Option<std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>>>> = Lazy::new(|| Mutex::new(None));
+static OCR_APP_WINDOW: Lazy<Mutex<Option<slint::Weak<crate::AppWindow>>>> = Lazy::new(|| Mutex::new(None));
 
-/// Registers the SnippingOverlay component with its crop and OCR callbacks
-pub fn register_snipping_overlay(
-    overlay: &crate::SnippingOverlay,
+/// Registers backend DB and AppWindow references for OCR results
+pub fn register_ocr_backend(
     db: std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>,
     app_weak: slint::Weak<crate::AppWindow>,
 ) {
-    let overlay_weak = overlay.as_weak();
-    *SNIPPING_OVERLAY.lock() = Some(overlay_weak.clone());
-
-    let overlay_weak_done = overlay_weak.clone();
-    let db_clone = db.clone();
-    let app_weak_clone = app_weak.clone();
-
-    overlay.on_selection_completed(move |x, y, w, h| {
-        IS_SNIPPING_ACTIVE.store(false, Ordering::SeqCst);
-
-        if let Some(ol) = overlay_weak_done.upgrade() {
-            let _ = ol.window().hide();
-
-            let scale = ol.window().scale_factor();
-            let rx = ((x / 1.0) * scale).max(0.0) as u32;
-            let ry = ((y / 1.0) * scale).max(0.0) as u32;
-            let rw = ((w / 1.0) * scale).max(1.0) as u32;
-            let rh = ((h / 1.0) * scale).max(1.0) as u32;
-
-            let db_c = db_clone.clone();
-            let app_c = app_weak_clone.clone();
-
-            std::thread::spawn(move || {
-                // Short 60ms pause to ensure overlay window unmapping is finished
-                std::thread::sleep(std::time::Duration::from_millis(60));
-
-                if rw >= 5 && rh >= 5 {
-                    if let Ok(cropped) = crate::backend::screen_capture::capture_subregion(rx as i32, ry as i32, rw, rh) {
-                        let mut png_bytes = Vec::new();
-                        let mut cursor = std::io::Cursor::new(&mut png_bytes);
-                        if cropped.write_to(&mut cursor, image::ImageFormat::Png).is_ok() {
-                            if let Ok(text) = extract_text_from_image_buffer(&png_bytes) {
-                                let trimmed = text.trim();
-                                if !trimmed.is_empty() {
-                                    eprintln!("[OCR] Extracted text ({} chars):\n{}", trimmed.len(), trimmed);
-                                    let _ = crate::backend::clipboard::push_extracted_text(trimmed, &db_c);
-
-                                    let app_cc = app_c.clone();
-                                    let db_cc = db_c.clone();
-                                    let _ = slint::invoke_from_event_loop(move || {
-                                        crate::ui::helpers::refresh_clips(app_cc, db_cc, String::new());
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-    });
-
-    let overlay_weak_cancel = overlay_weak.clone();
-    overlay.on_selection_cancelled(move || {
-        IS_SNIPPING_ACTIVE.store(false, Ordering::SeqCst);
-        if let Some(ol) = overlay_weak_cancel.upgrade() {
-            let _ = ol.window().hide();
-        }
-    });
+    *OCR_DB.lock() = Some(db);
+    *OCR_APP_WINDOW.lock() = Some(app_weak);
 }
 
 /// Checks whether the tesseract CLI is available on the system PATH
@@ -226,6 +174,7 @@ pub fn extract_text_from_image_buffer(image_bytes: &[u8]) -> Result<String, Stri
 }
 
 /// Perform OCR text extraction directly from image path with automatic pre-processing
+#[allow(dead_code)]
 pub fn extract_text_from_file(image_path: &Path) -> Result<String, String> {
     if let Ok(bytes) = std::fs::read(image_path) {
         return extract_text_from_image_buffer(&bytes);
@@ -301,98 +250,145 @@ fn run_tesseract_on_path(image_path: &Path) -> Result<String, String> {
     }
 }
 
-/// Universal entry point for Screen Region OCR.
-/// Priority:
-/// 1. Windows 11 style interactive Snipping Overlay with dimmed backdrop and crosshair cursor
-/// 2. Fallback to portal or CLI region grabber
+/// Universal entry point for Screen Text Extractor / OCR
+#[allow(dead_code)]
+pub fn run_snipping_trigger(
+    db: std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>,
+    app_weak: slint::Weak<crate::AppWindow>,
+) {
+    run_ocr_capture_and_ingest(db, app_weak);
+}
+
 pub fn run_ocr_capture_and_ingest(
     db: std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>,
     app_weak: slint::Weak<crate::AppWindow>,
 ) {
-    let overlay_weak_opt = SNIPPING_OVERLAY.lock().clone();
-    if let Some(overlay_weak) = overlay_weak_opt {
-        // If overlay is already active, ignore repeated shortcut triggers
-        if IS_SNIPPING_ACTIVE.swap(true, Ordering::SeqCst) {
-            return;
-        }
-
-        // Hide main drawer window
-        let app_weak_clone = app_weak.clone();
-        let overlay_weak_clone = overlay_weak.clone();
-
-        let _ = slint::invoke_from_event_loop(move || {
-            if let Some(app) = app_weak_clone.upgrade() {
-                let _ = app.window().hide();
-            }
-
-            if let Some(overlay) = overlay_weak_clone.upgrade() {
-                overlay.set_is_selecting(false);
-                crate::ui::window::position_overlay_fullscreen(&overlay);
-                let _ = overlay.window().show();
-            }
-        });
+    if IS_SNIPPING_ACTIVE.swap(true, Ordering::SeqCst) {
         return;
     }
 
-    fallback_legacy_capture(db, app_weak);
-}
+    *OCR_DB.lock() = Some(db);
+    *OCR_APP_WINDOW.lock() = Some(app_weak.clone());
 
-fn fallback_legacy_capture(
-    db: std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>>,
-    app_weak: slint::Weak<crate::AppWindow>,
-) {
-    std::thread::spawn(move || {
-        IS_OCR_RUNNING.store(true, Ordering::SeqCst);
-
-        struct OcrGuard;
-        impl Drop for OcrGuard {
-            fn drop(&mut self) {
-                if let Ok(Some((_, hash))) = crate::backend::clipboard::get_current_image() {
-                    crate::backend::clipboard::LAST_IMAGE_HASH.store(hash, Ordering::SeqCst);
-                }
-                IS_OCR_RUNNING.store(false, Ordering::SeqCst);
-            }
+    // 1. Hide main drawer window if visible
+    let app_weak_clone = app_weak.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(app) = app_weak_clone.upgrade() {
+            let _ = app.window().hide();
         }
-        let _guard = OcrGuard;
+    });
 
-        let app_weak_clone = app_weak.clone();
-        let _ = slint::invoke_from_event_loop(move || {
-            if let Some(app) = app_weak_clone.upgrade() {
-                let _ = app.window().hide();
+    tokio::spawn(async move {
+        // 2. Capture non-interactive desktop screenshot (x11rb on X11 / XDG Portal/grim on Wayland)
+        let snap_res = crate::backend::screen_capture::capture_fullscreen_snapshot_universal().await;
+
+        match snap_res {
+            Ok(rgba_img) => {
+                let (width, height) = rgba_img.dimensions();
+                let raw_bytes = rgba_img.as_raw().clone();
+
+                // Store in memory for cropping on selection completion
+                *SNIPPING_SNAPSHOT.lock() = Some(rgba_img);
+
+                // 3. Open brand-new SnippingOverlay in true fullscreen on UI thread
+                let _ = slint::invoke_from_event_loop(move || {
+                    let overlay = match crate::SnippingOverlay::new() {
+                        Ok(o) => o,
+                        Err(e) => {
+                            IS_SNIPPING_ACTIVE.store(false, Ordering::SeqCst);
+                            eprintln!("[OCR] Failed to create overlay: {}", e);
+                            return;
+                        }
+                    };
+
+                    crate::ui::window::configure_utility_window(&overlay, "MagicToys Snipping");
+
+                    let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                        &raw_bytes,
+                        width,
+                        height,
+                    );
+                    let slint_img = slint::Image::from_rgba8(pixel_buffer);
+                    overlay.set_desktop_snapshot(slint_img);
+                    overlay.set_is_selecting(false);
+
+                    let overlay_weak = overlay.as_weak();
+                    let overlay_weak_done = overlay.as_weak();
+
+                    overlay.on_selection_completed(move |x, y, w, h| {
+                        IS_SNIPPING_ACTIVE.store(false, Ordering::SeqCst);
+
+                        if let Some(ol) = overlay_weak_done.upgrade() {
+                            let _ = ol.window().hide();
+                        }
+                        ACTIVE_SNIP.with(|s| { s.borrow_mut().take(); });
+
+                        let scale = overlay_weak_done.upgrade().map(|o| o.window().scale_factor()).unwrap_or(1.0);
+                        let rx = ((x / 1.0) * scale).max(0.0) as u32;
+                        let ry = ((y / 1.0) * scale).max(0.0) as u32;
+                        let rw = ((w / 1.0) * scale).max(1.0) as u32;
+                        let rh = ((h / 1.0) * scale).max(1.0) as u32;
+
+                        let cached_img = SNIPPING_SNAPSHOT.lock().take();
+                        let db_opt = OCR_DB.lock().clone();
+                        let app_opt = OCR_APP_WINDOW.lock().clone();
+
+                        std::thread::spawn(move || {
+                            if rw >= 5 && rh >= 5 {
+                                let cropped_opt = if let Some(ref full_img) = cached_img {
+                                    let fx = rx.min(full_img.width().saturating_sub(1));
+                                    let fy = ry.min(full_img.height().saturating_sub(1));
+                                    let fw = rw.min(full_img.width().saturating_sub(fx)).max(1);
+                                    let fh = rh.min(full_img.height().saturating_sub(fy)).max(1);
+                                    Some(image::imageops::crop_imm(full_img, fx, fy, fw, fh).to_image())
+                                } else {
+                                    crate::backend::screen_capture::capture_subregion(rx as i32, ry as i32, rw, rh).ok()
+                                };
+
+                                if let Some(cropped) = cropped_opt {
+                                    let mut png_bytes = Vec::new();
+                                    let mut cursor = std::io::Cursor::new(&mut png_bytes);
+                                    if cropped.write_to(&mut cursor, image::ImageFormat::Png).is_ok() {
+                                        if let Ok(text) = extract_text_from_image_buffer(&png_bytes) {
+                                            let trimmed = text.trim();
+                                            if !trimmed.is_empty() {
+                                                eprintln!("[OCR] Extracted text ({} chars):\n{}", trimmed.len(), trimmed);
+                                                if let Some(ref db) = db_opt {
+                                                    let _ = crate::backend::clipboard::push_extracted_text(trimmed, db);
+                                                }
+                                                if let (Some(app_weak_h), Some(db_h)) = (app_opt, db_opt) {
+                                                    let _ = slint::invoke_from_event_loop(move || {
+                                                        crate::ui::helpers::refresh_clips(app_weak_h, db_h, String::new());
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
+
+                    let overlay_weak_cancel = overlay_weak.clone();
+                    overlay.on_selection_cancelled(move || {
+                        IS_SNIPPING_ACTIVE.store(false, Ordering::SeqCst);
+                        *SNIPPING_SNAPSHOT.lock() = None;
+                        if let Some(ol) = overlay_weak_cancel.upgrade() {
+                            let _ = ol.window().hide();
+                        }
+                        ACTIVE_SNIP.with(|s| { s.borrow_mut().take(); });
+                    });
+
+                    let focus_timer = crate::ui::window::setup_snipping_overlay_focus_listener(&overlay);
+                    let _ = overlay.window().show();
+                    crate::ui::window::position_overlay_fullscreen(&overlay);
+
+                    ACTIVE_SNIP.with(|s| { *s.borrow_mut() = Some((overlay, focus_timer)); });
+                });
             }
-        });
-
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        let captured_path = match crate::backend::screen_capture::capture_screen_region() {
-            Ok(path) => path,
             Err(e) => {
-                eprintln!("[OCR] Screen capture aborted or failed: {}", e);
-                return;
-            }
-        };
-
-        let ocr_result = extract_text_from_file(&captured_path);
-        let _ = std::fs::remove_file(&captured_path);
-
-        match ocr_result {
-            Ok(text) => {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    eprintln!("[OCR] Extracted {} characters:\n{}", trimmed.len(), trimmed);
-                    if let Err(e) = crate::backend::clipboard::push_extracted_text(trimmed, &db) {
-                        eprintln!("[OCR Error]: Failed to push to clipboard: {}", e);
-                    } else {
-                        let db_clone = db.clone();
-                        let app_weak_clone = app_weak.clone();
-                        slint::invoke_from_event_loop(move || {
-                            crate::ui::helpers::refresh_clips(app_weak_clone, db_clone, String::new());
-                        }).ok();
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!("[OCR Notice]: {}", err);
+                IS_SNIPPING_ACTIVE.store(false, Ordering::SeqCst);
+                eprintln!("[OCR] Screenshot capture error: {}", e);
             }
         }
     });

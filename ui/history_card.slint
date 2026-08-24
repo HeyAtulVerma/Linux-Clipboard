@@ -45,6 +45,17 @@ export component HistoryCard inherits TouchArea {
                 height: 54px;
                 image-fit: contain;
             }
+
+            if (item.is_color) : Rectangle {
+                width: 42px;
+                height: 42px;
+                border-radius: 8px;
+                background: item.color_preview;
+                border-width: 1.5px;
+                border-color: #ffffff33;
+                drop-shadow-blur: 4px;
+                drop-shadow-color: #00000044;
+            }
             
             VerticalLayout {
                 horizontal-stretch: 1;

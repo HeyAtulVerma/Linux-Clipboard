@@ -6,3 +6,4 @@ pub mod theme;
 pub mod ipc;
 pub mod ocr;
 pub mod screen_capture;
+pub mod color_picker;

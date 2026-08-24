@@ -131,7 +131,7 @@ X-GNOME-Autostart-enabled=true\n",
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "-v" || a == "-V" || a == "--version") {
-        println!("MagicToys v0.0.4");
+        println!("MagicToys v{}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
@@ -143,6 +143,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if handle_single_instance(&sock_path, &args).await? {
         return Ok(());
     }
+
+    // Graceful socket cleanup on SIGINT/Ctrl+C
+    let sock_path_cleanup = sock_path.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        let _ = fs::remove_file(&sock_path_cleanup);
+        std::process::exit(0);
+    });
 
     // Initialize input simulation device (Wayland uinput or X11)
     if let Err(e) = backend::simulator::init_simulator() {
@@ -170,9 +178,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create Slint App Window & Snipping Overlay Window
     let app = AppWindow::new()?;
     let app_weak = app.as_weak();
+    crate::ui::window::configure_utility_window(&app, "MagicToys");
 
-    let snipping_overlay = SnippingOverlay::new()?;
-    backend::ocr::register_snipping_overlay(&snipping_overlay, conn.clone(), app_weak.clone());
+    backend::ocr::register_ocr_backend(conn.clone(), app_weak.clone());
+
+    let color_editor = ColorEditorWindow::new()?;
+    crate::ui::window::configure_utility_window(&color_editor, "MagicToys Color Inspector");
+    backend::color_picker::register_color_picker(&color_editor, app_weak.clone(), conn.clone(), config_manager.clone());
 
     let initial_is_dark = match settings.theme_mode.as_str() {
         "dark" => true,
@@ -197,6 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Setup focus lost hide and positioning
     let _focus_timer = ui::window::setup_focus_loss_listener(&app);
+    let _editor_focus_timer = ui::window::setup_color_editor_focus_listener(&color_editor);
     ui::window::position_window(&app);
 
     // Spawn IPC socket listener in background
@@ -375,6 +388,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if args.iter().any(|a| a == "--ocr" || a == "-o" || a == "--grab") {
         if settings.enable_ocr_feature {
             crate::backend::ocr::run_ocr_capture_and_ingest(conn.clone(), app_weak.clone());
+        }
+    } else if args.iter().any(|a| a == "--color" || a == "-c" || a == "--color-picker" || a == "--pick-color") {
+        if settings.enable_color_picker_feature {
+            crate::backend::color_picker::run_color_picker_trigger();
         }
     } else if !args.iter().any(|a| a == "--background" || a == "-b") {
         // Direct launch without flags: Open Preferences window
@@ -634,6 +651,10 @@ fn show_main_window(
         main_win.set_enable_clipboard(settings.enable_clipboard_feature);
         main_win.set_enable_emoji(settings.enable_emoji_feature);
         main_win.set_enable_ocr(settings.enable_ocr_feature);
+        main_win.set_enable_color_picker(settings.enable_color_picker_feature);
+        main_win.set_color_picker_show_editor(settings.color_picker_show_editor);
+        main_win.set_color_picker_auto_copy(settings.color_picker_auto_copy);
+        main_win.set_color_picker_default_format(settings.color_picker_default_format.clone().into());
         main_win.set_history_count(history_count);
 
         refresh_window_conflicts(&main_win);
@@ -736,6 +757,57 @@ fn show_main_window(
             }
         });
 
+        // Toggle Color Picker
+        let config_manager_color = config_manager.clone();
+        let main_win_weak_color = main_win.as_weak();
+        main_win.on_toggle_color_picker(move |enabled| {
+            let mut settings = config_manager_color.load();
+            settings.enable_color_picker_feature = enabled;
+            let _ = config_manager_color.save(&settings);
+            let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+
+            if let Some(mwin) = main_win_weak_color.upgrade() {
+                mwin.set_enable_color_picker(enabled);
+            }
+        });
+
+        // Toggle Color Editor Window
+        let config_manager_editor = config_manager.clone();
+        let main_win_weak_editor = main_win.as_weak();
+        main_win.on_toggle_color_editor_window(move |enabled| {
+            let mut settings = config_manager_editor.load();
+            settings.color_picker_show_editor = enabled;
+            let _ = config_manager_editor.save(&settings);
+            if let Some(mwin) = main_win_weak_editor.upgrade() {
+                mwin.set_color_picker_show_editor(enabled);
+            }
+        });
+
+        // Toggle Color Auto Copy
+        let config_manager_autocopy = config_manager.clone();
+        let main_win_weak_autocopy = main_win.as_weak();
+        main_win.on_toggle_color_auto_copy(move |enabled| {
+            let mut settings = config_manager_autocopy.load();
+            settings.color_picker_auto_copy = enabled;
+            let _ = config_manager_autocopy.save(&settings);
+            if let Some(mwin) = main_win_weak_autocopy.upgrade() {
+                mwin.set_color_picker_auto_copy(enabled);
+            }
+        });
+
+        // Set Default Color Format
+        let config_manager_fmt = config_manager.clone();
+        let main_win_weak_fmt = main_win.as_weak();
+        main_win.on_set_color_default_format(move |fmt| {
+            let fmt_str = fmt.to_string();
+            let mut settings = config_manager_fmt.load();
+            settings.color_picker_default_format = fmt_str.clone();
+            let _ = config_manager_fmt.save(&settings);
+            if let Some(mwin) = main_win_weak_fmt.upgrade() {
+                mwin.set_color_picker_default_format(fmt);
+            }
+        });
+
         // Fix Single Shortcut
         let main_win_weak_fix = main_win.as_weak();
         main_win.on_fix_single_shortcut(move |sc_type| {
@@ -780,8 +852,10 @@ fn refresh_window_conflicts(main_win: &MainWindow) {
     let clip_conflict = backend::shortcuts::check_single_shortcut_conflict("toggle");
     let emoji_conflict = backend::shortcuts::check_single_shortcut_conflict("emoji");
     let ocr_conflict = backend::shortcuts::check_single_shortcut_conflict("ocr");
+    let color_conflict = backend::shortcuts::check_single_shortcut_conflict("color");
 
     main_win.set_clip_has_conflict(clip_conflict);
     main_win.set_emoji_has_conflict(emoji_conflict);
     main_win.set_ocr_has_conflict(ocr_conflict);
+    main_win.set_color_picker_has_conflict(color_conflict);
 }
