@@ -36,6 +36,20 @@ pub struct UserSettings {
     /// Enable Screen OCR Text Extractor (Alt + Shift + T)
     #[serde(default = "default_true")]
     pub enable_ocr_feature: bool,
+    /// Enable Color Picker (Alt + Shift + C)
+    #[serde(default = "default_true")]
+    pub enable_color_picker_feature: bool,
+
+    // --- Color Picker Specific Options ---
+    /// Show full color editor window after picking a color
+    #[serde(default = "default_true")]
+    pub color_picker_show_editor: bool,
+    /// Copy color code to clipboard immediately upon picking
+    #[serde(default = "default_true")]
+    pub color_picker_auto_copy: bool,
+    /// Default format to copy instantly: "HEX", "RGB", "HSL", "HSV", "CMYK"
+    #[serde(default = "default_hex_format")]
+    pub color_picker_default_format: String,
 
     // --- History Settings ---
     /// Maximum number of clipboard history items to keep (1 to 100000)
@@ -46,6 +60,10 @@ pub struct UserSettings {
     pub auto_delete_unit: String,
 }
 
+fn default_hex_format() -> String {
+    "HEX".to_string()
+}
+
 impl Default for UserSettings {
     fn default() -> Self {
         Self {
@@ -54,6 +72,10 @@ impl Default for UserSettings {
             enable_clipboard_feature: true,
             enable_emoji_feature: true,
             enable_ocr_feature: true,
+            enable_color_picker_feature: true,
+            color_picker_show_editor: true,
+            color_picker_auto_copy: true,
+            color_picker_default_format: "HEX".to_string(),
             max_history_size: DEFAULT_MAX_HISTORY_SIZE,
             auto_delete_interval: 0,
             auto_delete_unit: "hours".to_string(),
@@ -86,6 +108,11 @@ impl UserSettings {
         let valid_accents = ["#f97316", "#3b82f6", "#8b5cf6", "#22c55e", "#f43f5e", "#06b6d4"];
         if !valid_accents.contains(&self.accent_color.as_str()) {
             self.accent_color = default_accent();
+        }
+
+        let valid_formats = ["HEX", "RGB", "HSL", "HSV", "CMYK"];
+        if !valid_formats.contains(&self.color_picker_default_format.as_str()) {
+            self.color_picker_default_format = "HEX".to_string();
         }
 
         self.max_history_size = self.max_history_size.clamp(1, 100_000);

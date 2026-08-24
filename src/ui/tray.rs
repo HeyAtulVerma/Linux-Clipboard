@@ -71,6 +71,13 @@ impl Tray for MagicToysTray {
                 }),
                 ..Default::default()
             }.into(),
+            StandardItem {
+                label: "Color Picker (Alt+Shift+C)".into(),
+                activate: Box::new(|_this: &mut Self| {
+                    crate::backend::color_picker::run_color_picker_trigger();
+                }),
+                ..Default::default()
+            }.into(),
             MenuItem::Separator,
             StandardItem {
                 label: "Settings".into(),

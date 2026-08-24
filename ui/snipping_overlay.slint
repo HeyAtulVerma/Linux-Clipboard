@@ -11,6 +11,7 @@ export component SnippingOverlay inherits Window {
     callback selection-completed(length, length, length, length);
     callback selection-cancelled();
 
+    in-out property <image> desktop-snapshot;
     in-out property <bool> is-selecting: false;
     in-out property <length> start-x: 0px;
     in-out property <length> start-y: 0px;
@@ -36,11 +37,19 @@ export component SnippingOverlay inherits Window {
         }
     }
 
-    // 1. Translucent Dim Overlay (Windows 11 dark veil over actual live desktop)
+    // 0. Fullscreen desktop snapshot
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.desktop-snapshot;
+        image-fit: fill;
+    }
+
+    // 1. Translucent Dim Overlay (Windows 11 dark veil over actual desktop snapshot)
     Rectangle {
         width: 100%;
         height: 100%;
-        background: #00000066;
+        background: #00000077;
     }
 
     // 2. Top Floating Instruction Pill (Windows 11 Fluent style)
@@ -98,50 +107,56 @@ export component SnippingOverlay inherits Window {
         }
     }
 
-    // 3. Interactive Drag Selection Box
+    // 3. Interactive Drag Selection Box (Punches a bright crystal-clear window through the veil)
     if (root.is-selecting && root.box-w > 2px && root.box-h > 2px) : Rectangle {
         x: root.box-x;
         y: root.box-y;
         width: root.box-w;
         height: root.box-h;
-        border-width: 2px;
-        border-color: #60cdff;
-        background: #60cdff18;
-        clip: false;
+        clip: true;
 
-        // Subtle glowing accent outline
-        Rectangle {
-            x: -1px;
-            y: -1px;
-            width: parent.width + 2px;
-            height: parent.height + 2px;
-            border-width: 1px;
-            border-color: #ffffff99;
-            background: transparent;
+        // Render clear un-dimmed desktop snapshot
+        Image {
+            x: -root.box-x;
+            y: -root.box-y;
+            width: root.width;
+            height: root.height;
+            source: root.desktop-snapshot;
+            image-fit: fill;
         }
 
-        // Live dimension badge at bottom of selection
-        if (root.box-w > 60px && root.box-h > 30px) : Rectangle {
-            x: max(0px, (parent.width - self.width) / 2);
-            y: parent.height + 8px;
-            height: 22px;
-            background: #181818ee;
-            border-radius: 4px;
-            border-width: 1px;
-            border-color: #ffffff22;
+        // Crisp border highlight
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            border-width: 2px;
+            border-color: #60cdff;
+            background: transparent;
+        }
+    }
 
-            HorizontalLayout {
-                padding-left: 8px;
-                padding-right: 8px;
-                alignment: center;
+    // 3b. Dimension Badge outside clipped box
+    if (root.is-selecting && root.box-w > 60px && root.box-h > 30px) : Rectangle {
+        x: root.box-x + max(0px, (root.box-w - self.width) / 2);
+        y: root.box-y + root.box-h + 8px;
+        height: 22px;
+        background: #181818ee;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: #ffffff22;
+        z: 90;
 
-                Text {
-                    text: "\{Math.round(root.box-w / 1px)} × \{Math.round(root.box-h / 1px)}";
-                    color: #60cdff;
-                    font-size: 11px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            alignment: center;
+
+            Text {
+                text: "\{Math.round(root.box-w / 1px)} × \{Math.round(root.box-h / 1px)}";
+                color: #60cdff;
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
             }
         }
     }

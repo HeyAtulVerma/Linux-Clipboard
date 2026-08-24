@@ -39,6 +39,14 @@ const SHORTCUTS: &[DesktopShortcut] = &[
         kde_shortcut_key: "Alt+Shift+T",
         xfce_property: "/commands/custom/<Alt><Shift>t",
     },
+    DesktopShortcut {
+        id: "magictoys-color",
+        name: "Pick Screen Color",
+        command: "magictoys --color",
+        gnome_binding: "<Alt><Shift>c",
+        kde_shortcut_key: "Alt+Shift+C",
+        xfce_property: "/commands/custom/<Alt><Shift>c",
+    },
 ];
 
 fn command_exists(cmd: &str) -> bool {
@@ -100,12 +108,13 @@ pub fn detect_desktop_environment() -> String {
     }
 }
 
-/// Checks if a specific shortcut key ("toggle", "emoji", "ocr") has an active system conflict
+/// Checks if a specific shortcut key ("toggle", "emoji", "ocr", "color") has an active system conflict
 pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
     let target_binding = match shortcut_key {
         "toggle" => "'<Alt>v'",
         "emoji" => "'<Alt>period'",
         "ocr" => "'<Alt><Shift>t'",
+        "color" => "'<Alt><Shift>c'",
         _ => return false,
     };
 
@@ -113,6 +122,7 @@ pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
         "toggle" => "magictoys-toggle",
         "emoji" => "magictoys-emoji",
         "ocr" => "magictoys-ocr",
+        "color" => "magictoys-color",
         _ => "",
     };
 
@@ -166,6 +176,7 @@ pub fn check_single_shortcut_conflict(shortcut_key: &str) -> bool {
             "toggle" => "/commands/custom/<Alt>v",
             "emoji" => "/commands/custom/<Alt>period",
             "ocr" => "/commands/custom/<Alt><Shift>t",
+            "color" => "/commands/custom/<Alt><Shift>c",
             _ => "",
         };
         if !prop.is_empty() {
@@ -209,15 +220,22 @@ pub fn register_shortcuts_filtered(settings: &crate::config::UserSettings) -> Re
         let _ = unregister_single_shortcut("ocr");
     }
 
+    if settings.enable_color_picker_feature {
+        let _ = fix_single_shortcut("color");
+    } else {
+        let _ = unregister_single_shortcut("color");
+    }
+
     Ok(())
 }
 
-/// Unregister a single shortcut by key ("toggle", "emoji", "ocr")
+/// Unregister a single shortcut by key ("toggle", "emoji", "ocr", "color")
 pub fn unregister_single_shortcut(shortcut_key: &str) -> Result<(), String> {
     let sc_id = match shortcut_key {
         "toggle" => "magictoys-toggle",
         "emoji" => "magictoys-emoji",
         "ocr" => "magictoys-ocr",
+        "color" => "magictoys-color",
         _ => return Err("Invalid shortcut identifier".to_string()),
     };
 
@@ -255,6 +273,7 @@ pub fn unregister_single_shortcut(shortcut_key: &str) -> Result<(), String> {
             "toggle" => "/commands/custom/<Alt>v",
             "emoji" => "/commands/custom/<Alt>period",
             "ocr" => "/commands/custom/<Alt><Shift>t",
+            "color" => "/commands/custom/<Alt><Shift>c",
             _ => "",
         };
         if !sc_prop.is_empty() {
@@ -266,12 +285,13 @@ pub fn unregister_single_shortcut(shortcut_key: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Fixes/registers a single specific shortcut instantly ("toggle", "emoji", or "ocr")
+/// Fixes/registers a single specific shortcut instantly ("toggle", "emoji", "ocr", or "color")
 pub fn fix_single_shortcut(shortcut_type: &str) -> Result<(), String> {
     let target_sc = match shortcut_type {
         "toggle" => &SHORTCUTS[0],
         "emoji" => &SHORTCUTS[1],
         "ocr" => &SHORTCUTS[2],
+        "color" => &SHORTCUTS[3],
         _ => return Err("Unknown shortcut type".to_string()),
     };
 
@@ -285,6 +305,17 @@ pub fn fix_single_shortcut(shortcut_type: &str) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+fn get_executable_command(sc_command: &str) -> String {
+    let bin = if std::path::Path::new("/usr/bin/magictoys").exists() {
+        "/usr/bin/magictoys".to_string()
+    } else if let Ok(current) = std::env::current_exe() {
+        current.to_string_lossy().to_string()
+    } else {
+        "magictoys".to_string()
+    };
+    sc_command.replace("magictoys", &bin)
 }
 
 fn fix_single_gnome(sc: &DesktopShortcut) -> Result<(), String> {
@@ -313,12 +344,13 @@ fn fix_single_gnome(sc: &DesktopShortcut) -> Result<(), String> {
     };
 
     let binding_path = format!("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/{}/", sc.id);
+    let resolved_cmd = get_executable_command(sc.command);
 
     let _ = Command::new("gsettings")
         .args(["set", &format!("{}:{}", base_path, binding_path), "name", sc.name])
         .status();
     let _ = Command::new("gsettings")
-        .args(["set", &format!("{}:{}", base_path, binding_path), "command", sc.command])
+        .args(["set", &format!("{}:{}", base_path, binding_path), "command", &resolved_cmd])
         .status();
     let _ = Command::new("gsettings")
         .args(["set", &format!("{}:{}", base_path, binding_path), "binding", sc.gnome_binding])
@@ -345,8 +377,10 @@ fn fix_single_kde(sc: &DesktopShortcut) -> Result<(), String> {
         return Err("kwriteconfig utility not found".to_string());
     };
 
+    let resolved_cmd = get_executable_command(sc.command);
+
     let _ = Command::new(kwc)
-        .args(["--file", "kglobalshortcutsrc", "--group", "magictoys", "--key", sc.id, sc.command])
+        .args(["--file", "kglobalshortcutsrc", "--group", "magictoys", "--key", sc.id, &resolved_cmd])
         .status();
     let _ = Command::new(kwc)
         .args(["--file", "kglobalshortcutsrc", "--group", "magictoys", "--key", &format!("{}_key", sc.id), sc.kde_shortcut_key])
@@ -364,8 +398,10 @@ fn fix_single_xfce(sc: &DesktopShortcut) -> Result<(), String> {
         return Err("xfconf-query utility not found".to_string());
     }
 
+    let resolved_cmd = get_executable_command(sc.command);
+
     let _ = Command::new("xfconf-query")
-        .args(["--channel", "xfce4-keyboard-shortcuts", "--property", sc.xfce_property, "--create", "--type", "string", "--set", sc.command])
+        .args(["--channel", "xfce4-keyboard-shortcuts", "--property", sc.xfce_property, "--create", "--type", "string", "--set", &resolved_cmd])
         .status();
 
     Ok(())

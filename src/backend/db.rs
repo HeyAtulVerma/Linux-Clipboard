@@ -76,7 +76,43 @@ pub fn init_db(db_path: &Path) -> Result<Connection> {
         [],
     )?;
 
+    // Create color history table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS color_history (
+            hex TEXT PRIMARY KEY,
+            r INTEGER NOT NULL,
+            g INTEGER NOT NULL,
+            b INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL
+        )",
+        [],
+    )?;
+
     Ok(conn)
+}
+
+/// Insert or update a color in color history
+pub fn insert_color_history(conn: &Connection, hex: &str, r: u8, g: u8, b: u8) -> Result<()> {
+    let now = chrono::Utc::now().timestamp();
+    conn.execute(
+        "INSERT INTO color_history (hex, r, g, b, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(hex) DO UPDATE SET timestamp = ?5",
+        params![hex, r, g, b, now],
+    )?;
+    Ok(())
+}
+
+/// Retrieve recent picked color hexes
+pub fn get_recent_colors(conn: &Connection, limit: usize) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT hex FROM color_history ORDER BY timestamp DESC LIMIT ?1")?;
+    let rows = stmt.query_map(params![limit as i64], |row| row.get::<_, String>(0))?;
+    let mut results = Vec::new();
+    for r in rows {
+        if let Ok(hex) = r {
+            results.push(hex);
+        }
+    }
+    Ok(results)
 }
 
 /// Insert or update a clipboard item in the database

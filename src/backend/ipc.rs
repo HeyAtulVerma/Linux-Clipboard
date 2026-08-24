@@ -12,19 +12,23 @@ use slint::ComponentHandle;
 /// If socket is stale, removes it and returns false.
 pub async fn handle_single_instance(sock_path: &Path, args: &[String]) -> Result<bool, Box<dyn std::error::Error>> {
     if sock_path.exists() {
-        if let Ok(mut stream) = UnixStream::connect(sock_path).await {
+        let connect_fut = UnixStream::connect(sock_path);
+        if let Ok(Ok(mut stream)) = tokio::time::timeout(std::time::Duration::from_millis(350), connect_fut).await {
             let cmd = if args.iter().any(|a| a == "--emoji" || a == "-e") {
                 "emoji"
             } else if args.iter().any(|a| a == "--ocr" || a == "-o" || a == "--grab") {
                 "ocr"
-            } else if args.iter().any(|a| a == "--toggle" || a == "-t" || a == "-c" || a == "--clipboard") {
+            } else if args.iter().any(|a| a == "--color" || a == "-c" || a == "--color-picker" || a == "--pick-color") {
+                "color"
+            } else if args.iter().any(|a| a == "--toggle" || a == "-t" || a == "--clipboard" || a == "-v") {
                 "toggle"
             } else if args.iter().any(|a| a == "--background" || a == "-b") {
                 "background"
             } else {
                 "settings"
             };
-            let _ = stream.write_all(cmd.as_bytes()).await;
+            let write_fut = stream.write_all(cmd.as_bytes());
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(350), write_fut).await;
             return Ok(true);
         } else {
             // Stale socket, remove it
@@ -78,6 +82,15 @@ pub fn spawn_ipc_listener(
                                 return;
                             }
 
+                            if cmd_str == "color" {
+                                if !settings.enable_color_picker_feature {
+                                    eprintln!("[IPC] Color Picker is disabled in Preferences.");
+                                    return;
+                                }
+                                crate::backend::color_picker::run_color_picker_trigger();
+                                return;
+                            }
+
                             if cmd_str == "emoji" && !settings.enable_emoji_feature {
                                 eprintln!("[IPC] Emoji Picker is disabled in Preferences.");
                                 return;
@@ -99,9 +112,11 @@ pub fn spawn_ipc_listener(
                                         if cmd_str == "emoji" {
                                             app.set_active_tab(1);
                                             app.set_search_placeholder("Search emojis...".into());
+                                            crate::ui::helpers::refresh_emojis(app_weak_clone.clone(), 0, String::new());
                                         } else {
                                             app.set_active_tab(0);
                                             app.set_search_placeholder("Search history...".into());
+                                            crate::ui::helpers::refresh_clips(app_weak_clone.clone(), db_clone.clone(), String::new());
                                         }
                                         app.set_selected_index(0);
                                         crate::backend::simulator::save_focused_window();

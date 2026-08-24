@@ -64,7 +64,7 @@ pub fn get_current_text() -> Result<String, String> {
     with_clipboard(|ctx| ctx.get_text())
 }
 
-/// Helper to write text via external command fallback (X11 only)
+/// Helper to write text via external command fallback
 fn set_clipboard_external(cmd: &str, args: &[&str], data: &str) -> Result<(), String> {
     if !command_exists(cmd) {
         return Err(format!("Command '{}' not found", cmd));
@@ -84,7 +84,7 @@ fn set_clipboard_external(cmd: &str, args: &[&str], data: &str) -> Result<(), St
             .map_err(|e| format!("Pipe write error: {}", e))?;
     }
 
-    if cmd == "xclip" {
+    if cmd == "xclip" || cmd == "wl-copy" {
         std::thread::spawn(move || {
             let _ = child.wait();
         });
@@ -98,7 +98,7 @@ fn set_clipboard_external(cmd: &str, args: &[&str], data: &str) -> Result<(), St
     }
 }
 
-/// Helper to write raw bytes (images) via external command fallback (X11 only)
+/// Helper to write raw bytes (images) via external command fallback
 fn set_clipboard_external_bytes(cmd: &str, args: &[&str], data: &[u8]) -> Result<(), String> {
     if !command_exists(cmd) {
         return Err(format!("Command '{}' not found", cmd));
@@ -118,7 +118,7 @@ fn set_clipboard_external_bytes(cmd: &str, args: &[&str], data: &[u8]) -> Result
             .map_err(|e| format!("Pipe write error: {}", e))?;
     }
 
-    if cmd == "xclip" {
+    if cmd == "xclip" || cmd == "wl-copy" {
         std::thread::spawn(move || {
             let _ = child.wait();
         });
@@ -132,24 +132,43 @@ fn set_clipboard_external_bytes(cmd: &str, args: &[&str], data: &[u8]) -> Result
     }
 }
 
-/// Robustly set text to clipboard
+/// Robustly set text to clipboard across Wayland, X11, and in-process
 pub fn set_text_robust(text: &str) -> Result<(), String> {
     let hash = calculate_hash(text);
     LAST_TEXT_HASH.store(hash, Ordering::SeqCst);
 
-    // Primary: in-process arboard
-    if let Ok(()) = with_clipboard(|ctx| ctx.set_text(text.to_owned())) {
-        return Ok(());
-    }
+    let mut written = false;
 
-    // Secondary fallback on X11
-    if is_x11() {
-        if set_clipboard_external("xclip", &["-selection", "clipboard", "-t", "UTF8_STRING"], text).is_ok() {
-            return Ok(());
+    // 1. If on Wayland, try wl-copy
+    if !is_x11() && command_exists("wl-copy") {
+        if set_clipboard_external("wl-copy", &[], text).is_ok() {
+            written = true;
         }
     }
 
-    Err("Failed to set clipboard text".to_string())
+    // 2. If on X11, try xclip / xsel
+    if is_x11() {
+        if command_exists("xclip") {
+            let _ = set_clipboard_external("xclip", &["-selection", "clipboard"], text);
+            let _ = set_clipboard_external("xclip", &["-selection", "primary"], text);
+            written = true;
+        } else if command_exists("xsel") {
+            let _ = set_clipboard_external("xsel", &["-b", "-i"], text);
+            let _ = set_clipboard_external("xsel", &["-p", "-i"], text);
+            written = true;
+        }
+    }
+
+    // 3. In-process arboard
+    if with_clipboard(|ctx| ctx.set_text(text.to_owned())).is_ok() {
+        written = true;
+    }
+
+    if written {
+        Ok(())
+    } else {
+        Err("Failed to set clipboard text".to_string())
+    }
 }
 
 /// Robustly set HTML content to clipboard
@@ -157,20 +176,29 @@ pub fn set_html_robust(html: &str, plain: &str) -> Result<(), String> {
     let hash = calculate_hash(plain);
     LAST_TEXT_HASH.store(hash, Ordering::SeqCst);
 
-    // Primary: in-process arboard
-    if let Ok(()) = with_clipboard(|ctx| ctx.set_html(html.to_owned(), Some(plain.to_owned()))) {
-        return Ok(());
+    let mut written = false;
+
+    if !is_x11() && command_exists("wl-copy") {
+        let _ = set_clipboard_external("wl-copy", &["-t", "text/html"], html);
+        written = true;
     }
 
-    // Secondary fallback on X11
-    if is_x11() {
-        if set_clipboard_external("xclip", &["-selection", "clipboard", "-t", "text/html"], html).is_ok() {
-            let _ = set_text_robust(plain);
-            return Ok(());
-        }
+    if is_x11() && command_exists("xclip") {
+        let _ = set_clipboard_external("xclip", &["-selection", "clipboard", "-t", "text/html"], html);
+        written = true;
     }
 
-    Err("Failed to set clipboard HTML".to_string())
+    if with_clipboard(|ctx| ctx.set_html(html.to_owned(), Some(plain.to_owned()))).is_ok() {
+        written = true;
+    }
+
+    let _ = set_text_robust(plain);
+
+    if written {
+        Ok(())
+    } else {
+        Err("Failed to set HTML".to_string())
+    }
 }
 
 /// Struct containing raw RGBA image dimensions and pixels
@@ -214,28 +242,40 @@ pub fn set_image_robust(base64_str: &str, _width: u32, _height: u32) -> Result<(
     let hash = calculate_hash(&bytes);
     LAST_IMAGE_HASH.store(hash, Ordering::SeqCst);
 
-    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
-    let rgba = img.to_rgba8();
+    let mut written = false;
 
-    let img_data = ImageData {
-        width: rgba.width() as usize,
-        height: rgba.height() as usize,
-        bytes: Cow::Owned(rgba.into_raw()),
-    };
-
-    // Primary: in-process arboard
-    if let Ok(()) = with_clipboard(|ctx| ctx.set_image(img_data.clone())) {
-        return Ok(());
-    }
-
-    // Secondary fallback on X11
-    if is_x11() {
-        if set_clipboard_external_bytes("xclip", &["-selection", "clipboard", "-t", "image/png"], &bytes).is_ok() {
-            return Ok(());
+    // 1. Wayland wl-copy
+    if !is_x11() && command_exists("wl-copy") {
+        if set_clipboard_external_bytes("wl-copy", &["-t", "image/png"], &bytes).is_ok() {
+            written = true;
         }
     }
 
-    Err("Failed to write clipboard image".to_string())
+    // 2. X11 xclip
+    if is_x11() && command_exists("xclip") {
+        if set_clipboard_external_bytes("xclip", &["-selection", "clipboard", "-t", "image/png"], &bytes).is_ok() {
+            written = true;
+        }
+    }
+
+    // 3. In-process arboard
+    if let Ok(img) = image::load_from_memory(&bytes) {
+        let rgba = img.to_rgba8();
+        let img_data = ImageData {
+            width: rgba.width() as usize,
+            height: rgba.height() as usize,
+            bytes: Cow::Owned(rgba.into_raw()),
+        };
+        if with_clipboard(|ctx| ctx.set_image(img_data.clone())).is_ok() {
+            written = true;
+        }
+    }
+
+    if written {
+        Ok(())
+    } else {
+        Err("Failed to write clipboard image".to_string())
+    }
 }
 
 /// Converts raw RGBA pixels to a Base64-encoded PNG image

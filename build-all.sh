@@ -17,7 +17,7 @@ RESET='\033[0m'
 
 APP_NAME="magictoys"
 PKG_NAME="magictoys"
-VERSION="0.0.4"
+VERSION="0.0.45"
 ARCH="amd64"
 ARCH_LINUX="x86_64"
 DESCRIPTION="MagicToys — Native Clipboard, Emoji, and OCR tools for Linux"
@@ -128,7 +128,7 @@ Architecture: amd64
 Maintainer: ${MAINTAINER}
 Installed-Size: ${INSTALLED_SIZE}
 Depends: tesseract-ocr, tesseract-ocr-eng, xdg-desktop-portal
-Recommends: wl-clipboard, xclip, wtype, maim, scrot, gnome-shell-extension-appindicator
+Recommends: wl-clipboard, xclip, wtype, gnome-shell-extension-appindicator
 Section: utils
 Priority: optional
 Homepage: ${HOMEPAGE}
@@ -151,6 +151,14 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
 fi
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications 2>/dev/null || true
+fi
+
+# Automatically launch background daemon for active desktop user so shortcuts work immediately
+if [ -n "$SUDO_USER" ]; then
+    USER_ID=$(id -u "$SUDO_USER" 2>/dev/null || true)
+    if [ -n "$USER_ID" ]; then
+        su - "$SUDO_USER" -c "DISPLAY=${DISPLAY:-:0} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/$USER_ID /usr/bin/magictoys --background >/dev/null 2>&1 &" 2>/dev/null || true
+    fi
 fi
 EOF
     chmod 755 "$PKG_DIR/DEBIAN/postinst"
@@ -244,9 +252,6 @@ license = ${LICENSE}
 depend = tesseract
 depend = tesseract-data-eng
 depend = xdg-desktop-portal
-optdepend = maim: X11 screen region capture
-optdepend = grim: Wayland screen capture
-optdepend = slurp: Wayland region selection
 optdepend = wl-clipboard: Wayland clipboard access
 optdepend = xclip: X11 clipboard access
 optdepend = wtype: Wayland keystroke simulation
@@ -269,10 +274,9 @@ build_rpm() {
     local RPM_DIR="$BUILD_CACHE/rpm"
     local STAGE_DIR="$RPM_DIR/STAGE"
 
-    mkdir -p "$RPM_DIR"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$STAGE_DIR"
+    rm -rf "$RPM_DIR"
+    mkdir -p "$RPM_DIR"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,tmp} "$STAGE_DIR"
     local SPEC="$RPM_DIR/SPECS/${PKG_NAME}.spec"
-
-    rm -rf "$STAGE_DIR"
     install -dm755 "$STAGE_DIR/usr/bin"
     install -dm755 "$STAGE_DIR/usr/share/applications"
     install -dm755 "$STAGE_DIR/usr/share/icons/hicolor/256x256/apps"
@@ -319,10 +323,6 @@ BuildArch:      x86_64
 Requires:       tesseract
 Requires:       tesseract-langpack-eng
 Requires:       xdg-desktop-portal
-Recommends:     maim
-Recommends:     scrot
-Recommends:     grim
-Recommends:     slurp
 Recommends:     wl-clipboard
 Recommends:     xclip
 Recommends:     wtype
@@ -347,18 +347,48 @@ cp -a ${STAGE_DIR}/* %{buildroot}/
 /usr/share/pixmaps/${APP_NAME}.png
 /etc/xdg/autostart/${APP_NAME}.desktop
 /usr/lib/udev/rules.d/99-magictoys-uinput.rules
+
+%post
+if [ \$1 -eq 1 ] || [ \$1 -eq 2 ]; then
+    /sbin/ldconfig 2>/dev/null || true
+    modprobe uinput 2>/dev/null || true
+    udevadm control --reload-rules 2>/dev/null || true
+    udevadm trigger 2>/dev/null || true
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+    fi
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database /usr/share/applications 2>/dev/null || true
+    fi
+    # Automatically launch background daemon for active desktop user
+    if [ -n "\$SUDO_USER" ]; then
+        USER_ID=\$(id -u "\$SUDO_USER" 2>/dev/null || true)
+        if [ -n "\$USER_ID" ]; then
+            su - "\$SUDO_USER" -c "DISPLAY=\${DISPLAY:-:0} WAYLAND_DISPLAY=\${WAYLAND_DISPLAY:-wayland-0} XDG_RUNTIME_DIR=/run/user/\$USER_ID /usr/bin/magictoys --background >/dev/null 2>&1 &" 2>/dev/null || true
+        fi
+    fi
+fi
+
+%preun
+if [ \$1 -eq 0 ]; then
+    pkill -x "magictoys" 2>/dev/null || true
+fi
 EOF
 
     if command -v rpmbuild &>/dev/null; then
         rpmbuild --define "_topdir $RPM_DIR" \
+                 --define "_tmppath $RPM_DIR/tmp" \
                  --define "_builddir $RPM_DIR/BUILD" \
                  --define "_rpmdir $RPM_DIR/RPMS" \
                  --define "_srcrpmdir $RPM_DIR/SRPMS" \
                  --define "_buildrootdir $RPM_DIR/BUILDROOT" \
                  --nodeps \
-                 -bb "$SPEC" &>/dev/null || rpmbuild --define "_topdir $RPM_DIR" --nodeps -bb "$SPEC"
+                 -bb "$SPEC" &>/dev/null || rpmbuild --define "_topdir $RPM_DIR" --define "_tmppath $RPM_DIR/tmp" --nodeps -bb "$SPEC"
         
-        local RPM_FILE=$(find "$RPM_DIR/RPMS" -name "*.rpm" | head -n 1)
+        local RPM_FILE=$(find "$RPM_DIR/RPMS" -name "*${VERSION}*.rpm" | head -n 1)
+        if [ -z "$RPM_FILE" ]; then
+            RPM_FILE=$(find "$RPM_DIR/RPMS" -name "*.rpm" | head -n 1)
+        fi
         if [ -n "$RPM_FILE" ]; then
             cp -f "$RPM_FILE" "$RELEASES_DIR/${PKG_NAME}-${VERSION}-1.x86_64.rpm"
             ok "RPM package: $RELEASES_DIR/${PKG_NAME}-${VERSION}-1.x86_64.rpm ($(du -sh "$RELEASES_DIR/${PKG_NAME}-${VERSION}-1.x86_64.rpm" | cut -f1))"

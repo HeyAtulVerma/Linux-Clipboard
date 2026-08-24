@@ -6,7 +6,7 @@
 
 ### *The Native, Ultra-Fast PowerToys Productivity Suite for Linux*
 
-[![Release](https://img.shields.io/badge/Release-v0.0.4-brightgreen?style=for-the-badge&logo=github)](https://github.com/HeyAtulVerma/MagicToys/releases)
+[![Release](https://img.shields.io/badge/Release-v0.0.41-brightgreen?style=for-the-badge&logo=github)](https://github.com/HeyAtulVerma/MagicToys/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge)](LICENSE)
 [![Built With](https://img.shields.io/badge/Built_With-Rust_%26_Slint-orange?style=for-the-badge&logo=rust)](https://slint.dev/)
 [![Platform](https://img.shields.io/badge/Platform-X11_%7C_Wayland_%7C_Hyprland-blueviolet?style=for-the-badge&logo=linux)](https://github.com/HeyAtulVerma/MagicToys)
@@ -28,6 +28,7 @@
 | **📋 Clipboard History** | <kbd>Alt</kbd> + <kbd>V</kbd> | `Win + V` | Instant recall of copied text, rich formatted text, and PNG image thumbnail previews with smart de-duplication, search, pinning, and SQLite persistence. |
 | **😀 Emoji & Symbol Picker** | <kbd>Alt</kbd> + <kbd>.</kbd> | `Win + .` | Categorized Unicode 15+ emoji and symbol grid with live search, keyword tagging, and LRU frequency tracking. |
 | **🔍 Windows 11 Text Extractor (OCR)** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | `Win + Shift + T` | Instantaneous screen freeze with dark veil dimming, precision crosshair cursor, Fluent top pill banner, live drag box, and pure-Rust high-contrast OCR directly to clipboard. |
+| **🎨 Windows 11 Color Picker** | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> | `Win + Shift + C` | Interactive pixel magnifying loupe bubble tracking the mouse cursor with live HEX display, multi-format Color Inspector window (HEX, RGB, HSL, HSV, CMYK), and instant-copy settings. |
 
 ---
 
@@ -37,29 +38,29 @@ Pre-compiled packages for all major Linux distributions are available under [Rel
 
 ### 🐧 Ubuntu / Debian / Pop!_OS / Linux Mint / Zorin OS (`.deb`)
 ```bash
-sudo apt install ./releases/magictoys_0.0.4_amd64.deb
+sudo apt install ./releases/magictoys_0.0.41_amd64.deb
 ```
 
 ### 🏹 Arch Linux / Manjaro / EndeavourOS (`.pkg.tar.zst`)
 ```bash
-sudo pacman -U ./releases/magictoys-0.0.4-1-x86_64.pkg.tar.zst
+sudo pacman -U ./releases/magictoys-0.0.41-1-x86_64.pkg.tar.zst
 ```
 
 ### 🎩 Fedora / RHEL / CentOS / openSUSE (`.rpm`)
 ```bash
-sudo dnf install ./releases/magictoys-0.0.4-1.x86_64.rpm
+sudo dnf install ./releases/magictoys-0.0.41-1.x86_64.rpm
 ```
 
 ### 📦 Universal Standalone AppImage *(Works on any distro)*
 ```bash
-chmod +x releases/MagicToys-0.0.4-x86_64.AppImage
-./releases/MagicToys-0.0.4-x86_64.AppImage
+chmod +x releases/MagicToys-0.0.41-x86_64.AppImage
+./releases/MagicToys-0.0.41-x86_64.AppImage
 ```
 
 ### 🗜️ Generic Portable Tarball
 ```bash
-tar -xzf releases/magictoys-0.0.4-x86_64.tar.gz
-cd magictoys-0.0.4
+tar -xzf releases/magictoys-0.0.41-x86_64.tar.gz
+cd magictoys-0.0.41
 sudo ./install.sh
 ```
 

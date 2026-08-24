@@ -57,6 +57,12 @@ pub fn refresh_clips(app_weak: slint::Weak<AppWindow>, conn: Arc<Mutex<Connectio
                         slint::Image::default()
                     };
 
+                    let (is_color, color_preview) = if let Some((r, g, b)) = try_parse_color(&plain_text) {
+                        (true, slint::Color::from_argb_u8(255, r, g, b))
+                    } else {
+                        (false, slint::Color::default())
+                    };
+
                     SlintClipItem {
                         id: item.id.into(),
                         item_type: item_type.into(),
@@ -66,6 +72,8 @@ pub fn refresh_clips(app_weak: slint::Weak<AppWindow>, conn: Arc<Mutex<Connectio
                         preview: item.preview.into(),
                         image_base64: b64.into(),
                         image: slint_img,
+                        is_color,
+                        color_preview,
                     }
                 })
                 .collect();
@@ -133,4 +141,152 @@ pub fn refresh_emojis(app_weak: slint::Weak<AppWindow>, category_idx: i32, searc
         }
         app.set_emoji_rows(ModelRc::new(VecModel::from(emoji_rows)));
     }
+}
+
+/// Tries to parse a color format string (HEX, RGB, HSL, HSV, CMYK) into RGB u8
+fn try_parse_color(text: &str) -> Option<(u8, u8, u8)> {
+    let t = text.trim();
+    // 1. #HEX (#RGB or #RRGGBB)
+    if t.starts_with('#') {
+        let clean = &t[1..];
+        if clean.len() == 6 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                u8::from_str_radix(&clean[0..2], 16),
+                u8::from_str_radix(&clean[2..4], 16),
+                u8::from_str_radix(&clean[4..6], 16),
+            ) {
+                return Some((r, g, b));
+            }
+        } else if clean.len() == 3 {
+            let r_str = format!("{}{}", &clean[0..1], &clean[0..1]);
+            let g_str = format!("{}{}", &clean[1..2], &clean[1..2]);
+            let b_str = format!("{}{}", &clean[2..3], &clean[2..3]);
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                u8::from_str_radix(&r_str, 16),
+                u8::from_str_radix(&g_str, 16),
+                u8::from_str_radix(&b_str, 16),
+            ) {
+                return Some((r, g, b));
+            }
+        }
+    }
+    // 2. rgb(r, g, b)
+    if t.starts_with("rgb(") && t.ends_with(')') {
+        let inner = &t[4..t.len() - 1];
+        let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
+        if parts.len() >= 3 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                parts[0].parse::<u8>(),
+                parts[1].parse::<u8>(),
+                parts[2].parse::<u8>(),
+            ) {
+                return Some((r, g, b));
+            }
+        }
+    }
+    // 3. hsl(h, s%, l%)
+    if t.starts_with("hsl(") && t.ends_with(')') {
+        let inner = &t[4..t.len() - 1];
+        let parts: Vec<&str> = inner.split(',').map(|s| s.trim().trim_end_matches('%')).collect();
+        if parts.len() >= 3 {
+            if let (Ok(h), Ok(s), Ok(l)) = (
+                parts[0].parse::<f32>(),
+                parts[1].parse::<f32>(),
+                parts[2].parse::<f32>(),
+            ) {
+                return Some(hsl_to_rgb(h, s / 100.0, l / 100.0));
+            }
+        }
+    }
+    // 4. hsv(h, s%, v%)
+    if t.starts_with("hsv(") && t.ends_with(')') {
+        let inner = &t[4..t.len() - 1];
+        let parts: Vec<&str> = inner.split(',').map(|s| s.trim().trim_end_matches('%')).collect();
+        if parts.len() >= 3 {
+            if let (Ok(h), Ok(s), Ok(v)) = (
+                parts[0].parse::<f32>(),
+                parts[1].parse::<f32>(),
+                parts[2].parse::<f32>(),
+            ) {
+                return Some(hsv_to_rgb(h, s / 100.0, v / 100.0));
+            }
+        }
+    }
+    // 5. cmyk(c%, m%, y%, k%)
+    if t.starts_with("cmyk(") && t.ends_with(')') {
+        let inner = &t[5..t.len() - 1];
+        let parts: Vec<&str> = inner.split(',').map(|s| s.trim().trim_end_matches('%')).collect();
+        if parts.len() >= 4 {
+            if let (Ok(c), Ok(m), Ok(y), Ok(k)) = (
+                parts[0].parse::<f32>(),
+                parts[1].parse::<f32>(),
+                parts[2].parse::<f32>(),
+                parts[3].parse::<f32>(),
+            ) {
+                return Some(cmyk_to_rgb(c / 100.0, m / 100.0, y / 100.0, k / 100.0));
+            }
+        }
+    }
+    None
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let h_prime = (h % 360.0) / 60.0;
+    let x = c * (1.0 - (h_prime % 2.0 - 1.0).abs());
+    let (r1, g1, b1) = if (0.0..1.0).contains(&h_prime) {
+        (c, x, 0.0)
+    } else if (1.0..2.0).contains(&h_prime) {
+        (x, c, 0.0)
+    } else if (2.0..3.0).contains(&h_prime) {
+        (0.0, c, x)
+    } else if (3.0..4.0).contains(&h_prime) {
+        (0.0, x, c)
+    } else if (4.0..5.0).contains(&h_prime) {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    let m = l - c / 2.0;
+    (
+        ((r1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((g1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((b1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let c = v * s;
+    let h_prime = (h % 360.0) / 60.0;
+    let x = c * (1.0 - (h_prime % 2.0 - 1.0).abs());
+    let (r1, g1, b1) = if (0.0..1.0).contains(&h_prime) {
+        (c, x, 0.0)
+    } else if (1.0..2.0).contains(&h_prime) {
+        (x, c, 0.0)
+    } else if (2.0..3.0).contains(&h_prime) {
+        (0.0, c, x)
+    } else if (3.0..4.0).contains(&h_prime) {
+        (0.0, x, c)
+    } else if (4.0..5.0).contains(&h_prime) {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    let m = v - c;
+    (
+        ((r1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((g1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+        ((b1 + m) * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
+fn cmyk_to_rgb(c: f32, m: f32, y: f32, k: f32) -> (u8, u8, u8) {
+    let r = 255.0 * (1.0 - c) * (1.0 - k);
+    let g = 255.0 * (1.0 - m) * (1.0 - k);
+    let b = 255.0 * (1.0 - y) * (1.0 - k);
+    (
+        r.round().clamp(0.0, 255.0) as u8,
+        g.round().clamp(0.0, 255.0) as u8,
+        b.round().clamp(0.0, 255.0) as u8,
+    )
 }
