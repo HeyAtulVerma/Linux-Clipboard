@@ -135,32 +135,6 @@ export component SnippingOverlay inherits Window {
         }
     }
 
-    // 3b. Dimension Badge outside clipped box
-    if (root.is-selecting && root.box-w > 60px && root.box-h > 30px) : Rectangle {
-        x: root.box-x + max(0px, (root.box-w - self.width) / 2);
-        y: root.box-y + root.box-h + 8px;
-        height: 22px;
-        background: #181818ee;
-        border-radius: 4px;
-        border-width: 1px;
-        border-color: #ffffff22;
-        z: 90;
-
-        HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 8px;
-            alignment: center;
-
-            Text {
-                text: "\{Math.round(root.box-w / 1px)} × \{Math.round(root.box-h / 1px)}";
-                color: #60cdff;
-                font-size: 11px;
-                font-weight: 600;
-                vertical-alignment: center;
-            }
-        }
-    }
-
     // 4. Fullscreen Touch/Mouse Area with Precision Crosshair Cursor
     TouchArea {
         width: 100%;

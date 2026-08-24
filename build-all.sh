@@ -17,11 +17,11 @@ RESET='\033[0m'
 
 APP_NAME="magictoys"
 PKG_NAME="magictoys"
-VERSION="0.0.45"
+VERSION="0.0.5"
 ARCH="amd64"
 ARCH_LINUX="x86_64"
-DESCRIPTION="MagicToys — Native Clipboard, Emoji, and OCR tools for Linux"
-MAINTAINER="MagicToys Contributors <admin@ople.in>"
+DESCRIPTION="MagicToys — PowerToys alternative for Linux"
+MAINTAINER="MagicToys Contributors <atulverma@ople.in>"
 HOMEPAGE="https://github.com/HeyAtulVerma/MagicToys"
 LICENSE="GPL-3.0-or-later"
 
@@ -384,7 +384,7 @@ EOF
                  --define "_buildrootdir $RPM_DIR/BUILDROOT" \
                  --nodeps \
                  -bb "$SPEC" &>/dev/null || rpmbuild --define "_topdir $RPM_DIR" --define "_tmppath $RPM_DIR/tmp" --nodeps -bb "$SPEC"
-        
+
         local RPM_FILE=$(find "$RPM_DIR/RPMS" -name "*${VERSION}*.rpm" | head -n 1)
         if [ -z "$RPM_FILE" ]; then
             RPM_FILE=$(find "$RPM_DIR/RPMS" -name "*.rpm" | head -n 1)

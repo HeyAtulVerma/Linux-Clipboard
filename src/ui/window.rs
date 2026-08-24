@@ -357,12 +357,12 @@ pub fn position_overlay_fullscreen<T: ComponentHandle + 'static>(overlay: &T) {
             let size = m.size();
             winit_win.set_outer_position(PhysicalPosition::new(pos.x, pos.y));
             let _ = winit_win.request_inner_size(i_slint_backend_winit::winit::dpi::PhysicalSize::new(size.width, size.height));
-            winit_win.set_fullscreen(Some(i_slint_backend_winit::winit::window::Fullscreen::Borderless(Some(m.clone()))));
-        } else {
-            winit_win.set_fullscreen(Some(i_slint_backend_winit::winit::window::Fullscreen::Borderless(None)));
+            winit_win.set_min_inner_size(Some(i_slint_backend_winit::winit::dpi::PhysicalSize::new(size.width, size.height)));
+            winit_win.set_max_inner_size(Some(i_slint_backend_winit::winit::dpi::PhysicalSize::new(size.width, size.height)));
         }
 
         winit_win.set_visible(true);
+        winit_win.set_fullscreen(Some(i_slint_backend_winit::winit::window::Fullscreen::Borderless(None)));
         winit_win.focus_window();
 
         // On X11, set class and properties

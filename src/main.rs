@@ -180,9 +180,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_weak = app.as_weak();
     crate::ui::window::configure_utility_window(&app, "MagicToys");
 
-    let snipping_overlay = SnippingOverlay::new()?;
-    crate::ui::window::configure_utility_window(&snipping_overlay, "MagicToys Snipping");
-    let _snipping_focus_timer = backend::ocr::register_snipping_overlay(&snipping_overlay, conn.clone(), app_weak.clone());
+    backend::ocr::register_ocr_backend(conn.clone(), app_weak.clone());
 
     let color_editor = ColorEditorWindow::new()?;
     crate::ui::window::configure_utility_window(&color_editor, "MagicToys Color Inspector");

@@ -1,9 +1,9 @@
 [package]
 name = "magictoys"
-version = "0.0.45"
+version = "0.0.5"
 authors = ["Antigravity"]
 edition = "2021"
-description = "MagicToys — Native Clipboard, Emoji, and OCR tools for Linux"
+description = "MagicToys — PowerToys alternative for Linux"
 license = "GPL-3.0-or-later"
 
 [dependencies]
