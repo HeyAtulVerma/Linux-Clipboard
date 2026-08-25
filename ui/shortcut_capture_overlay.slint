@@ -1,0 +1,254 @@
+// MagicToys — Shortcut Capture Overlay
+// Fullscreen translucent overlay that steals exclusive keyboard focus on both X11 and Wayland.
+// Used when recording a new custom shortcut so system shortcuts cannot fire in the background.
+
+export component ShortcutCaptureOverlay inherits Window {
+    title: "MagicToys Shortcut Recorder";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+
+    // Properties mirroring the main-window modal state
+    in-out property <string> tool-title: "Set Shortcut";
+    in-out property <string> current-key: "";
+    in-out property <bool>   is-available: true;
+    in-out property <string> status-text: "Available";
+    in-out property <bool>   can-apply: true;
+    in-out property <bool>   show-override: false;
+    in-out property <bool>   is-dark: true;
+
+    // Design tokens
+    property <color> bg-color:      is-dark ? #0a0a0a : #f5f5f5;
+    property <color> card-bg:       is-dark ? #181818 : #ffffff;
+    property <color> card-hover-bg: is-dark ? #1e1e1e : #f0f0f0;
+    property <color> text-color:    is-dark ? #f5f5f5 : #111111;
+    property <color> text-muted:    is-dark ? #737373 : #737373;
+    property <color> border-color:  is-dark ? #1f1f1f : #e0e0e0;
+    property <color> accent:        #f97316;
+
+    // Callbacks
+    callback handle-key-press(string, bool, bool, bool, bool);
+    callback apply-shortcut();
+    callback cancel-recording();
+
+    // Top-level FocusScope captures ALL keypresses — no Slint propagation, no OS hotkeys on Wayland
+    forward-focus: root-capture-scope;
+    root-capture-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.cancel-recording();
+                return accept;
+            }
+            if (event.text == Key.Return && root.can-apply) {
+                root.apply-shortcut();
+                return accept;
+            }
+            root.handle-key-press(
+                event.text,
+                event.modifiers.control,
+                event.modifiers.alt,
+                event.modifiers.shift,
+                event.modifiers.meta
+            );
+            accept
+        }
+    }
+
+    // 1. Full-screen dimmed veil — captures all clicks outside the card
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000cc;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.cancel-recording(); }
+        }
+
+        // 2. Centered card
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 420px;
+            height: 250px;
+            background: card-bg;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: is-dark ? #333333 : #e0e0e0;
+            clip: true;
+
+            // Block clicks from hitting veil dismiss
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            VerticalLayout {
+                padding: 16px;
+                alignment: space-between;
+
+                // Header: Tick (top-left), Title (center), Close (top-right)
+                HorizontalLayout {
+                    alignment: space-between;
+                    height: 32px;
+
+                    btn-tick := TouchArea {
+                        width: 32px;
+                        height: 32px;
+                        enabled: root.can-apply;
+                        clicked => { root.apply-shortcut(); }
+                        Rectangle {
+                            background: root.can-apply
+                                ? (btn-tick.has-hover ? (is-dark ? #383838 : #374151) : (is-dark ? #282828 : #1f2937))
+                                : (is-dark ? #181818 : #f3f4f6);
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: root.can-apply
+                                ? (is-dark ? #4f4f4f : #111827)
+                                : (is-dark ? #282828 : #e5e7eb);
+                            Text {
+                                text: "✓";
+                                font-size: 15px;
+                                font-weight: 700;
+                                color: root.can-apply ? #ffffff : (is-dark ? #4a4a4a : #9ca3af);
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: root.tool-title;
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: text-color;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    btn-close := TouchArea {
+                        width: 32px;
+                        height: 32px;
+                        clicked => { root.cancel-recording(); }
+                        Rectangle {
+                            background: btn-close.has-hover ? card-hover-bg : transparent;
+                            border-radius: 6px;
+                            Text {
+                                text: "✕";
+                                font-size: 13px;
+                                font-weight: 600;
+                                color: text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Middle: Live key display
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
+
+                    Rectangle {
+                        height: 52px;
+                        background: card-hover-bg;
+                        border-radius: 8px;
+                        border-width: 1.5px;
+                        border-color: root.is-available
+                            ? (root.can-apply ? accent : border-color)
+                            : #ef4444;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            Text {
+                                text: root.current-key != "" ? root.current-key : "Press shortcut keys...";
+                                font-size: 17px;
+                                font-weight: 700;
+                                color: root.current-key != "" ? text-color : text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Press shortcut keys on your keyboard";
+                        font-size: 11px;
+                        color: text-muted;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                // Bottom: Status + override button
+                HorizontalLayout {
+                    alignment: space-between;
+                    height: 30px;
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: root.is-available
+                                    ? (is-dark ? #22c55e : #16a34a)
+                                    : #737373;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: root.status-text;
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: root.is-available
+                                    ? (is-dark ? #22c55e : #16a34a)
+                                    : (is-dark ? #a3a3a3 : #737373);
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    if (!root.is-available && root.show-override): btn-override := TouchArea {
+                        height: 28px;
+                        clicked => {
+                            root.can-apply = true;
+                            root.is-available = true;
+                            root.status-text = "Overriding shortcut";
+                        }
+                        Rectangle {
+                            background: btn-override.has-hover ? card-hover-bg : (is-dark ? #2a2a2a : #e5e5e5);
+                            border-radius: 5px;
+                            border-width: 1px;
+                            border-color: border-color;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                Text {
+                                    text: "Use here";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: text-color;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

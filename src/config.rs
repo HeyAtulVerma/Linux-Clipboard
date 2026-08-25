@@ -51,6 +51,20 @@ pub struct UserSettings {
     #[serde(default = "default_hex_format")]
     pub color_picker_default_format: String,
 
+    // --- Customizable Shortcuts ---
+    /// Global shortcut for Clipboard History (Default: "Alt+V")
+    #[serde(default = "default_shortcut_clipboard")]
+    pub shortcut_clipboard: String,
+    /// Global shortcut for Emoji & Symbol Picker (Default: "Alt+.")
+    #[serde(default = "default_shortcut_emoji")]
+    pub shortcut_emoji: String,
+    /// Global shortcut for Screen OCR Text Extractor (Default: "Alt+Shift+T")
+    #[serde(default = "default_shortcut_ocr")]
+    pub shortcut_ocr: String,
+    /// Global shortcut for Color Picker (Default: "Alt+Shift+C")
+    #[serde(default = "default_shortcut_color_picker")]
+    pub shortcut_color_picker: String,
+
     // --- History Settings ---
     /// Maximum number of clipboard history items to keep (1 to 100000)
     pub max_history_size: usize,
@@ -58,6 +72,22 @@ pub struct UserSettings {
     pub auto_delete_interval: u64,
     /// Auto-delete interval unit ("minutes", "hours", "days", "weeks")
     pub auto_delete_unit: String,
+}
+
+pub fn default_shortcut_clipboard() -> String {
+    "Alt+V".to_string()
+}
+
+pub fn default_shortcut_emoji() -> String {
+    "Alt+.".to_string()
+}
+
+pub fn default_shortcut_ocr() -> String {
+    "Alt+Shift+T".to_string()
+}
+
+pub fn default_shortcut_color_picker() -> String {
+    "Alt+Shift+C".to_string()
 }
 
 fn default_hex_format() -> String {
@@ -76,6 +106,10 @@ impl Default for UserSettings {
             color_picker_show_editor: true,
             color_picker_auto_copy: true,
             color_picker_default_format: "HEX".to_string(),
+            shortcut_clipboard: default_shortcut_clipboard(),
+            shortcut_emoji: default_shortcut_emoji(),
+            shortcut_ocr: default_shortcut_ocr(),
+            shortcut_color_picker: default_shortcut_color_picker(),
             max_history_size: DEFAULT_MAX_HISTORY_SIZE,
             auto_delete_interval: 0,
             auto_delete_unit: "hours".to_string(),
@@ -196,6 +230,156 @@ impl UserSettingsManager {
             .map_err(|e| format!("Failed to write settings file: {}", e))?;
 
         Ok(())
+    }
+}
+
+/// Normalizes any user shortcut string into a standard format like "Alt+V" or "Ctrl+Shift+T"
+pub fn normalize_shortcut_str(input: &str) -> String {
+    let cleaned = input.trim();
+    if cleaned.is_empty() {
+        return String::new();
+    }
+
+    let parts: Vec<&str> = cleaned
+        .split(|c: char| c == '+' || c == '-' || c == ' ' || c == '<' || c == '>')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if parts.is_empty() {
+        return String::new();
+    }
+
+    let mut has_ctrl = false;
+    let mut has_alt = false;
+    let mut has_shift = false;
+    let mut has_super = false;
+    let mut key_part = String::new();
+
+    for part in parts {
+        let p_lower = part.to_lowercase();
+        match p_lower.as_str() {
+            "ctrl" | "control" | "<ctrl>" | "<control>" => has_ctrl = true,
+            "alt" | "mod1" | "<alt>" => has_alt = true,
+            "shift" | "<shift>" => has_shift = true,
+            "super" | "win" | "mod4" | "meta" | "<super>" | "<meta>" => has_super = true,
+            _ => {
+                key_part = part.to_uppercase();
+                if key_part == "PERIOD" || key_part == "." {
+                    key_part = ".".to_string();
+                } else if key_part == "COMMA" || key_part == "," {
+                    key_part = ",".to_string();
+                } else if key_part == "SLASH" || key_part == "/" {
+                    key_part = "/".to_string();
+                }
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    if has_ctrl { result.push("Ctrl"); }
+    if has_alt { result.push("Alt"); }
+    if has_shift { result.push("Shift"); }
+    if has_super { result.push("Super"); }
+
+    if !key_part.is_empty() {
+        result.push(&key_part);
+    }
+
+    result.join("+")
+}
+
+/// Formats a shortcut string for display with spaces: "Alt + Shift + T"
+pub fn format_display_shortcut(sc: &str) -> String {
+    let norm = normalize_shortcut_str(sc);
+    if norm.is_empty() {
+        return "Not Set".to_string();
+    }
+    norm.split('+').collect::<Vec<&str>>().join(" + ")
+}
+
+/// Converts a normalized shortcut string to GNOME gsettings binding: "<Alt><Shift>t" or "<Alt>period"
+pub fn shortcut_to_gnome(sc: &str) -> String {
+    let norm = normalize_shortcut_str(sc);
+    let parts: Vec<&str> = norm.split('+').collect();
+    let mut binding = String::new();
+
+    for (i, part) in parts.iter().enumerate() {
+        if i == parts.len() - 1 {
+            let key_str = match *part {
+                "." => "period",
+                "," => "comma",
+                "/" => "slash",
+                ";" => "semicolon",
+                " " => "space",
+                other => other,
+            };
+            binding.push_str(&key_str.to_lowercase());
+        } else {
+            let mod_str = match *part {
+                "Ctrl" => "Control",
+                "Alt" => "Alt",
+                "Shift" => "Shift",
+                "Super" => "Super",
+                other => other,
+            };
+            binding.push_str(&format!("<{}>", mod_str));
+        }
+    }
+    binding
+}
+
+/// Converts a normalized shortcut string to KDE shortcut key: "Alt+Shift+T" or "Alt+."
+pub fn shortcut_to_kde(sc: &str) -> String {
+    normalize_shortcut_str(sc)
+}
+
+/// Converts a normalized shortcut string to XFCE property key: "/commands/custom/<Alt><Shift>t"
+pub fn shortcut_to_xfce(sc: &str) -> String {
+    let norm = normalize_shortcut_str(sc);
+    let parts: Vec<&str> = norm.split('+').collect();
+    let mut prop = String::from("/commands/custom/");
+
+    for (i, part) in parts.iter().enumerate() {
+        if i == parts.len() - 1 {
+            let key_str = match *part {
+                "." => "period",
+                "," => "comma",
+                "/" => "slash",
+                ";" => "semicolon",
+                " " => "space",
+                other => other,
+            };
+            prop.push_str(&key_str.to_lowercase());
+        } else {
+            prop.push_str(&format!("<{}>", part));
+        }
+    }
+    prop
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_shortcut() {
+        assert_eq!(normalize_shortcut_str("alt+v"), "Alt+V");
+        assert_eq!(normalize_shortcut_str("ctrl + shift + t"), "Ctrl+Shift+T");
+        assert_eq!(normalize_shortcut_str("<Alt><Shift>c"), "Alt+Shift+C");
+        assert_eq!(normalize_shortcut_str("alt + ."), "Alt+.");
+    }
+
+    #[test]
+    fn test_shortcut_translations() {
+        assert_eq!(shortcut_to_gnome("Alt+V"), "<Alt>v");
+        assert_eq!(shortcut_to_gnome("Alt+."), "<Alt>period");
+        assert_eq!(shortcut_to_gnome("Alt+Shift+T"), "<Alt><Shift>t");
+        assert_eq!(shortcut_to_gnome("Ctrl+Alt+V"), "<Control><Alt>v");
+
+        assert_eq!(shortcut_to_kde("Alt+Shift+T"), "Alt+Shift+T");
+        assert_eq!(shortcut_to_xfce("Alt+V"), "/commands/custom/<Alt>v");
+        assert_eq!(format_display_shortcut("Alt+Shift+T"), "Alt + Shift + T");
     }
 }
 

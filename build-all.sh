@@ -128,7 +128,7 @@ Architecture: amd64
 Maintainer: ${MAINTAINER}
 Installed-Size: ${INSTALLED_SIZE}
 Depends: tesseract-ocr, tesseract-ocr-eng, xdg-desktop-portal
-Recommends: wl-clipboard, xclip, wtype, gnome-shell-extension-appindicator
+Recommends: wl-clipboard, xclip, wtype
 Section: utils
 Priority: optional
 Homepage: ${HOMEPAGE}
@@ -326,7 +326,6 @@ Requires:       xdg-desktop-portal
 Recommends:     wl-clipboard
 Recommends:     xclip
 Recommends:     wtype
-Recommends:     gnome-shell-extension-appindicator
 
 %description
 MagicToys is a fast, native, lightweight clipboard history manager,

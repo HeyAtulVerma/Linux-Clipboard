@@ -452,3 +452,46 @@ pub fn position_center_window<T: ComponentHandle + 'static>(comp: &T) {
     });
 }
 
+/// Grabs exclusive keyboard input on X11 to prevent OS/window manager from intercepting hotkeys
+pub fn grab_keyboard_for_window<T: ComponentHandle + 'static>(comp: &T) {
+    if is_x11() {
+        comp.window().with_winit_window(|winit_win| {
+            use i_slint_backend_winit::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(handle) = winit_win.window_handle() {
+                let xid_u32 = match handle.as_raw() {
+                    RawWindowHandle::Xlib(xlib_handle) => Some(xlib_handle.window as u32),
+                    RawWindowHandle::Xcb(xcb_handle) => Some(xcb_handle.window.get()),
+                    _ => None,
+                };
+                if let Some(xid) = xid_u32 {
+                    if let Ok((conn, _)) = x11rb::connect(None) {
+                        use x11rb::protocol::xproto::{GrabMode, ConnectionExt};
+                        let _ = conn.grab_keyboard(
+                            false,
+                            xid,
+                            x11rb::CURRENT_TIME,
+                            GrabMode::ASYNC,
+                            GrabMode::ASYNC,
+                        );
+                        let _ = conn.flush();
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// Releases exclusive keyboard input on X11
+pub fn ungrab_keyboard_for_window<T: ComponentHandle + 'static>(comp: &T) {
+    if is_x11() {
+        comp.window().with_winit_window(|_winit_win| {
+            if let Ok((conn, _)) = x11rb::connect(None) {
+                use x11rb::protocol::xproto::ConnectionExt;
+                let _ = conn.ungrab_keyboard(x11rb::CURRENT_TIME);
+                let _ = conn.flush();
+            }
+        });
+    }
+}
+
+

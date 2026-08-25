@@ -73,6 +73,11 @@ pub fn spawn_ipc_listener(
                                 return;
                             }
 
+                            if crate::backend::shortcuts::IS_RECORDING_SHORTCUT.load(std::sync::atomic::Ordering::SeqCst) {
+                                eprintln!("[IPC] Ignored action '{}' because shortcut recording modal is active.", cmd_str);
+                                return;
+                            }
+
                             if cmd_str == "ocr" {
                                 if !settings.enable_ocr_feature {
                                     eprintln!("[IPC] Text Extractor (OCR) is disabled in Preferences.");

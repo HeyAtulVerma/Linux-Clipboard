@@ -181,10 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     crate::ui::window::configure_utility_window(&app, "MagicToys");
 
     backend::ocr::register_ocr_backend(conn.clone(), app_weak.clone());
-
-    let color_editor = ColorEditorWindow::new()?;
-    crate::ui::window::configure_utility_window(&color_editor, "MagicToys Color Inspector");
-    backend::color_picker::register_color_picker(&color_editor, app_weak.clone(), conn.clone(), config_manager.clone());
+    backend::color_picker::register_color_picker(app_weak.clone(), conn.clone(), config_manager.clone());
 
     let initial_is_dark = match settings.theme_mode.as_str() {
         "dark" => true,
@@ -209,7 +206,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Setup focus lost hide and positioning
     let _focus_timer = ui::window::setup_focus_loss_listener(&app);
-    let _editor_focus_timer = ui::window::setup_color_editor_focus_listener(&color_editor);
     ui::window::position_window(&app);
 
     // Spawn IPC socket listener in background
@@ -657,7 +653,8 @@ fn show_main_window(
         main_win.set_color_picker_default_format(settings.color_picker_default_format.clone().into());
         main_win.set_history_count(history_count);
 
-        refresh_window_conflicts(&main_win);
+        update_shortcut_display(&main_win, &settings);
+        refresh_window_conflicts(&main_win, &settings);
 
         // Change Theme
         let config_manager_c = config_manager.clone();
@@ -718,6 +715,7 @@ fn show_main_window(
             }
             if let Some(mwin) = main_win_weak_clip.upgrade() {
                 mwin.set_enable_clipboard(enabled);
+                refresh_window_conflicts(&mwin, &settings);
             }
         });
 
@@ -736,6 +734,7 @@ fn show_main_window(
             }
             if let Some(mwin) = main_win_weak_emoji.upgrade() {
                 mwin.set_enable_emoji(enabled);
+                refresh_window_conflicts(&mwin, &settings);
             }
         });
 
@@ -754,6 +753,7 @@ fn show_main_window(
             }
             if let Some(mwin) = main_win_weak_ocr.upgrade() {
                 mwin.set_enable_ocr(enabled);
+                refresh_window_conflicts(&mwin, &settings);
             }
         });
 
@@ -768,6 +768,7 @@ fn show_main_window(
 
             if let Some(mwin) = main_win_weak_color.upgrade() {
                 mwin.set_enable_color_picker(enabled);
+                refresh_window_conflicts(&mwin, &settings);
             }
         });
 
@@ -809,6 +810,7 @@ fn show_main_window(
         });
 
         // Fix Single Shortcut
+        let config_manager_fix = config_manager.clone();
         let main_win_weak_fix = main_win.as_weak();
         main_win.on_fix_single_shortcut(move |sc_type| {
             let sc_str = sc_type.to_string();
@@ -818,7 +820,150 @@ fn show_main_window(
                 eprintln!("[Main] Successfully registered single shortcut {}", sc_str);
             }
             if let Some(mwin) = main_win_weak_fix.upgrade() {
-                refresh_window_conflicts(&mwin);
+                let settings = config_manager_fix.load();
+                refresh_window_conflicts(&mwin, &settings);
+            }
+        });
+
+        // Open Shortcut Modal
+        let main_win_weak_modal = main_win.as_weak();
+        let config_manager_modal = config_manager.clone();
+        main_win.on_open_shortcut_modal(move |tool_id| {
+            if let Some(mwin) = main_win_weak_modal.upgrade() {
+                let tool_str = tool_id.to_string();
+                let settings = config_manager_modal.load();
+                let (current_sc, title) = match tool_str.as_str() {
+                    "toggle" => (settings.shortcut_clipboard.clone(), "Clipboard History Shortcut"),
+                    "emoji" => (settings.shortcut_emoji.clone(), "Emoji Picker Shortcut"),
+                    "ocr" => (settings.shortcut_ocr.clone(), "Text Extractor (OCR) Shortcut"),
+                    "color" => (settings.shortcut_color_picker.clone(), "Color Picker Shortcut"),
+                    _ => ("".to_string(), "Set Shortcut"),
+                };
+                let (avail, status_msg) = backend::shortcuts::check_shortcut_conflict_with_settings(&tool_str, &current_sc, &settings);
+                let show_override = !avail && !status_msg.starts_with("Add a modifier") && !status_msg.starts_with("Press a key");
+
+                backend::shortcuts::IS_RECORDING_SHORTCUT.store(true, std::sync::atomic::Ordering::SeqCst);
+                backend::shortcuts::suspend_all_shortcuts();
+                crate::ui::window::grab_keyboard_for_window(&mwin);
+
+                mwin.set_active_modal_tool(tool_id);
+                mwin.set_active_modal_tool_title(title.into());
+                mwin.set_active_modal_current_key(crate::config::format_display_shortcut(&current_sc).into());
+                mwin.set_active_modal_is_available(avail);
+                mwin.set_active_modal_status_text(status_msg.into());
+                mwin.set_active_modal_can_apply(avail);
+                mwin.set_active_modal_show_override(show_override);
+                mwin.set_is_shortcut_modal_open(true);
+            }
+        });
+
+        // Close Shortcut Modal
+        let main_win_weak_close = main_win.as_weak();
+        let config_manager_close = config_manager.clone();
+        main_win.on_close_shortcut_modal(move || {
+            backend::shortcuts::IS_RECORDING_SHORTCUT.store(false, std::sync::atomic::Ordering::SeqCst);
+            let settings = config_manager_close.load();
+            let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+            if let Some(mwin) = main_win_weak_close.upgrade() {
+                crate::ui::window::ungrab_keyboard_for_window(&mwin);
+                mwin.set_is_shortcut_modal_open(false);
+            }
+        });
+
+        // Test Shortcut Input
+        let main_win_weak_test = main_win.as_weak();
+        let config_manager_test = config_manager.clone();
+        main_win.on_test_shortcut_input(move |tool_id, new_key| {
+            if let Some(mwin) = main_win_weak_test.upgrade() {
+                let settings = config_manager_test.load();
+                let (avail, status_msg) = backend::shortcuts::check_shortcut_conflict_with_settings(
+                    tool_id.as_str(),
+                    new_key.as_str(),
+                    &settings,
+                );
+                let show_override = !avail && !status_msg.starts_with("Add a modifier") && !status_msg.starts_with("Press a key");
+
+                mwin.set_active_modal_is_available(avail);
+                mwin.set_active_modal_status_text(status_msg.into());
+                mwin.set_active_modal_can_apply(avail);
+                mwin.set_active_modal_show_override(show_override);
+            }
+        });
+
+        // Handle Shortcut Key Press
+        let main_win_weak_key = main_win.as_weak();
+        let config_manager_key = config_manager.clone();
+        main_win.on_handle_shortcut_key_press(move |key_text, ctrl, alt, shift, meta| {
+            if let Some(mwin) = main_win_weak_key.upgrade() {
+                let tool_str = mwin.get_active_modal_tool().to_string();
+                if let Some(parsed_sc) = backend::shortcuts::parse_key_press_to_shortcut(
+                    key_text.as_str(),
+                    ctrl,
+                    alt,
+                    shift,
+                    meta,
+                ) {
+                    let settings = config_manager_key.load();
+                    let (avail, status_msg) = backend::shortcuts::check_shortcut_conflict_with_settings(
+                        &tool_str,
+                        &parsed_sc,
+                        &settings,
+                    );
+                    let show_override = !avail && !status_msg.starts_with("Add a modifier") && !status_msg.starts_with("Press a key");
+
+                    mwin.set_active_modal_current_key(crate::config::format_display_shortcut(&parsed_sc).into());
+                    mwin.set_active_modal_is_available(avail);
+                    mwin.set_active_modal_status_text(status_msg.into());
+                    mwin.set_active_modal_can_apply(avail);
+                    mwin.set_active_modal_show_override(show_override);
+                }
+            }
+        });
+
+        // Apply Modal Shortcut
+        let main_win_weak_apply = main_win.as_weak();
+        let config_manager_apply = config_manager.clone();
+        main_win.on_apply_modal_shortcut(move |tool_id, new_key| {
+            if let Some(mwin) = main_win_weak_apply.upgrade() {
+                crate::ui::window::ungrab_keyboard_for_window(&mwin);
+                backend::shortcuts::IS_RECORDING_SHORTCUT.store(false, std::sync::atomic::Ordering::SeqCst);
+                let norm = crate::config::normalize_shortcut_str(new_key.as_str());
+                if norm.is_empty() {
+                    return;
+                }
+                let mut settings = config_manager_apply.load();
+                match tool_id.as_str() {
+                    "toggle" => settings.shortcut_clipboard = norm,
+                    "emoji" => settings.shortcut_emoji = norm,
+                    "ocr" => settings.shortcut_ocr = norm,
+                    "color" => settings.shortcut_color_picker = norm,
+                    _ => {}
+                }
+                let _ = config_manager_apply.save(&settings);
+                let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+                update_shortcut_display(&mwin, &settings);
+                mwin.set_is_shortcut_modal_open(false);
+                refresh_window_conflicts(&mwin, &settings);
+            }
+        });
+
+        // Reset Tool Shortcut
+        let main_win_weak_reset = main_win.as_weak();
+        let config_manager_reset = config_manager.clone();
+        main_win.on_reset_tool_shortcut(move |tool_id| {
+            if let Some(mwin) = main_win_weak_reset.upgrade() {
+                let mut settings = config_manager_reset.load();
+                match tool_id.as_str() {
+                    "toggle" => settings.shortcut_clipboard = "Alt+V".to_string(),
+                    "emoji" => settings.shortcut_emoji = "Alt+.".to_string(),
+                    "ocr" => settings.shortcut_ocr = "Alt+Shift+T".to_string(),
+                    "color" => settings.shortcut_color_picker = "Alt+Shift+C".to_string(),
+                    _ => {}
+                }
+                let _ = config_manager_reset.save(&settings);
+                let _ = backend::shortcuts::register_shortcuts_filtered(&settings);
+                update_shortcut_display(&mwin, &settings);
+                refresh_window_conflicts(&mwin, &settings);
             }
         });
 
@@ -847,15 +992,33 @@ fn show_main_window(
     }
 }
 
-/// Refreshes conflict properties on MainWindow
-fn refresh_window_conflicts(main_win: &MainWindow) {
-    let clip_conflict = backend::shortcuts::check_single_shortcut_conflict("toggle");
-    let emoji_conflict = backend::shortcuts::check_single_shortcut_conflict("emoji");
-    let ocr_conflict = backend::shortcuts::check_single_shortcut_conflict("ocr");
-    let color_conflict = backend::shortcuts::check_single_shortcut_conflict("color");
+/// Updates formatted shortcut strings and customization booleans on MainWindow
+fn update_shortcut_display(main_win: &MainWindow, settings: &config::UserSettings) {
+    let norm_clip = crate::config::normalize_shortcut_str(&settings.shortcut_clipboard);
+    let norm_emoji = crate::config::normalize_shortcut_str(&settings.shortcut_emoji);
+    let norm_ocr = crate::config::normalize_shortcut_str(&settings.shortcut_ocr);
+    let norm_color = crate::config::normalize_shortcut_str(&settings.shortcut_color_picker);
 
-    main_win.set_clip_has_conflict(clip_conflict);
-    main_win.set_emoji_has_conflict(emoji_conflict);
-    main_win.set_ocr_has_conflict(ocr_conflict);
-    main_win.set_color_picker_has_conflict(color_conflict);
+    main_win.set_clip_shortcut(crate::config::format_display_shortcut(&norm_clip).into());
+    main_win.set_emoji_shortcut(crate::config::format_display_shortcut(&norm_emoji).into());
+    main_win.set_ocr_shortcut(crate::config::format_display_shortcut(&norm_ocr).into());
+    main_win.set_color_picker_shortcut(crate::config::format_display_shortcut(&norm_color).into());
+
+    main_win.set_is_clip_customized(norm_clip != "Alt+V");
+    main_win.set_is_emoji_customized(norm_emoji != "Alt+.");
+    main_win.set_is_ocr_customized(norm_ocr != "Alt+Shift+T");
+    main_win.set_is_color_customized(norm_color != "Alt+Shift+C");
+}
+
+/// Refreshes conflict properties on MainWindow
+fn refresh_window_conflicts(main_win: &MainWindow, settings: &config::UserSettings) {
+    let (clip_avail, _) = backend::shortcuts::check_shortcut_conflict_with_settings("toggle", &settings.shortcut_clipboard, settings);
+    let (emoji_avail, _) = backend::shortcuts::check_shortcut_conflict_with_settings("emoji", &settings.shortcut_emoji, settings);
+    let (ocr_avail, _) = backend::shortcuts::check_shortcut_conflict_with_settings("ocr", &settings.shortcut_ocr, settings);
+    let (color_avail, _) = backend::shortcuts::check_shortcut_conflict_with_settings("color", &settings.shortcut_color_picker, settings);
+
+    main_win.set_clip_has_conflict(!clip_avail);
+    main_win.set_emoji_has_conflict(!emoji_avail);
+    main_win.set_ocr_has_conflict(!ocr_avail);
+    main_win.set_color_picker_has_conflict(!color_avail);
 }

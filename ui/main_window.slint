@@ -12,6 +12,32 @@ export component MainWindow inherits Window {
     preferred-height: 560px;
     background: bg-color;
 
+    forward-focus: modal-focus-scope;
+
+    modal-focus-scope := FocusScope {
+        key-pressed(event) => {
+            if (!root.is-shortcut-modal-open) {
+                return reject;
+            }
+            if (event.text == Key.Escape) {
+                root.close-shortcut-modal();
+                return accept;
+            }
+            if (event.text == Key.Return && root.active-modal-can-apply) {
+                root.apply-modal-shortcut(root.active-modal-tool, root.active-modal-current-key);
+                return accept;
+            }
+            root.handle-shortcut-key-press(
+                event.text,
+                event.modifiers.control,
+                event.modifiers.alt,
+                event.modifiers.shift,
+                event.modifiers.meta
+            );
+            accept
+        }
+    }
+
     // Active section: 0=General, 1=Clipboard, 2=Emoji, 3=Text Extractor
     in-out property <int> active-section: 0;
 
@@ -32,6 +58,27 @@ export component MainWindow inherits Window {
     in-out property <bool> color-picker-auto-copy: true;
     in-out property <string> color-picker-default-format: "HEX";
     in-out property <string> accent-hex: "#f97316";
+
+    // Custom Shortcut properties
+    in-out property <string> clip-shortcut: "Alt+V";
+    in-out property <string> emoji-shortcut: "Alt+.";
+    in-out property <string> ocr-shortcut: "Alt+Shift+T";
+    in-out property <string> color-picker-shortcut: "Alt+Shift+C";
+
+    in-out property <bool> is-clip-customized: false;
+    in-out property <bool> is-emoji-customized: false;
+    in-out property <bool> is-ocr-customized: false;
+    in-out property <bool> is-color-customized: false;
+
+    // Modal popup state
+    in-out property <bool> is-shortcut-modal-open: false;
+    in-out property <string> active-modal-tool: "";
+    in-out property <string> active-modal-tool-title: "";
+    in-out property <string> active-modal-current-key: "";
+    in-out property <bool> active-modal-is-available: true;
+    in-out property <string> active-modal-status-text: "Available";
+    in-out property <bool> active-modal-can-apply: true;
+    in-out property <bool> active-modal-show-override: false;
 
     // Design tokens — Ople black palette
     property <color> bg-color:       is-dark ? #0a0a0a : #f5f5f5;
@@ -65,6 +112,13 @@ export component MainWindow inherits Window {
     callback fix-single-shortcut(string);
     callback clear-history();
     callback open-url(string);
+
+    callback open-shortcut-modal(string);
+    callback close-shortcut-modal();
+    callback test-shortcut-input(string, string);
+    callback handle-shortcut-key-press(string, bool, bool, bool, bool);
+    callback apply-modal-shortcut(string, string);
+    callback reset-tool-shortcut(string);
 
 
     // ── Root layout ──────────────────────────────────────
@@ -234,7 +288,7 @@ export component MainWindow inherits Window {
                     VerticalLayout {
                         alignment: center;
                         Text {
-                            text: "v0.0.41";
+                            text: "v0.0.5";
                             font-size: 13px;
                             font-weight: 500;
                             color: text-muted;
@@ -650,50 +704,78 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     alignment: space-between;
 
-                                    Text {
-                                        text: "Global Shortcut";
-                                        font-size: 13px;
-                                        color: text-muted;
-                                        vertical-alignment: center;
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Global Shortcut";
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "Press to open Clipboard History from anywhere";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
+                                        spacing: 8px;
+                                        alignment: end;
 
-                                        Rectangle {
-                                            background: card-hover-bg;
-                                            border-radius: 4px;
-                                            border-width: 1px;
-                                            border-color: border-color;
-                                            height: 22px;
-                                            HorizontalLayout {
-                                                padding-left: 8px;
-                                                padding-right: 8px;
-                                                Text {
-                                                    text: "Alt + V";
-                                                    font-size: 13px;
-                                                    font-weight: 700;
-                                                    color: accent;
-                                                    vertical-alignment: center;
+                                        // Restore default button
+                                        if (root.is-clip-customized): VerticalLayout {
+                                            alignment: center;
+                                            btn-reset-clip := TouchArea {
+                                                width: 28px;
+                                                height: 28px;
+                                                clicked => { root.reset-tool-shortcut("toggle"); }
+                                                Rectangle {
+                                                    background: btn-reset-clip.has-hover ? card-hover-bg : transparent;
+                                                    border-radius: 14px;
+                                                    border-width: 1px;
+                                                    border-color: border-color;
+                                                    Text {
+                                                        text: "↺";
+                                                        font-size: 14px;
+                                                        font-weight: 700;
+                                                        color: text-muted;
+                                                        horizontal-alignment: center;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        // Fix shortcut button — only if conflict
-                                        if (root.enable-clipboard && root.clip-has-conflict): fix-clip := TouchArea {
-                                            width: 90px;
-                                            height: 22px;
-                                            clicked => { root.fix-single-shortcut("toggle"); }
+                                        // Editable shortcut square box
+                                        btn-edit-clip := TouchArea {
+                                            clicked => { root.open-shortcut-modal("toggle"); }
                                             Rectangle {
-                                                background: fix-clip.has-hover ? #dc2626 : danger-color;
-                                                border-radius: 4px;
-                                                Text {
-                                                    text: "Fix Shortcut";
-                                                    font-size: 12px;
-                                                    font-weight: 700;
-                                                    color: #ffffff;
-                                                    horizontal-alignment: center;
-                                                    vertical-alignment: center;
+                                                background: btn-edit-clip.has-hover ? card-hover-bg : (is-dark ? #222222 : #e8e8e8);
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: (root.enable-clipboard && root.clip-has-conflict) ? danger-color : (btn-edit-clip.has-hover ? accent : border-color);
+                                                height: 28px;
+
+                                                HorizontalLayout {
+                                                    padding-left: 10px;
+                                                    padding-right: 10px;
+                                                    spacing: 8px;
+
+                                                    Text {
+                                                        text: root.clip-shortcut;
+                                                        font-size: 13px;
+                                                        font-weight: 700;
+                                                        color: accent;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Text {
+                                                        text: "✎";
+                                                        font-size: 13px;
+                                                        color: text-muted;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
@@ -702,8 +784,8 @@ export component MainWindow inherits Window {
 
                                 // Conflict warning — only if conflict
                                 if (root.enable-clipboard && root.clip-has-conflict): Text {
-                                    text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 13px;
+                                    text: "⚠ Shortcut conflict detected with system keybindings";
+                                    font-size: 12px;
                                     color: danger-color;
                                 }
                             }
@@ -845,59 +927,92 @@ export component MainWindow inherits Window {
                                     }
                                 }
 
+                                // Shortcut badge row
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    Text {
-                                        text: "Global Shortcut";
-                                        font-size: 13px;
-                                        color: text-muted;
-                                        vertical-alignment: center;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Global Shortcut";
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "Press to open Emoji Picker from anywhere";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
-                                        Rectangle {
-                                            background: card-hover-bg;
-                                            border-radius: 4px;
-                                            border-width: 1px;
-                                            border-color: border-color;
-                                            height: 22px;
-                                            HorizontalLayout {
-                                                padding-left: 8px;
-                                                padding-right: 8px;
-                                                Text {
-                                                    text: "Alt + .";
-                                                    font-size: 13px;
-                                                    font-weight: 700;
-                                                    color: accent;
-                                                    vertical-alignment: center;
+                                        spacing: 8px;
+                                        alignment: end;
+
+                                        // Restore default button
+                                        if (root.is-emoji-customized): VerticalLayout {
+                                            alignment: center;
+                                            btn-reset-emoji := TouchArea {
+                                                width: 28px;
+                                                height: 28px;
+                                                clicked => { root.reset-tool-shortcut("emoji"); }
+                                                Rectangle {
+                                                    background: btn-reset-emoji.has-hover ? card-hover-bg : transparent;
+                                                    border-radius: 14px;
+                                                    border-width: 1px;
+                                                    border-color: border-color;
+                                                    Text {
+                                                        text: "↺";
+                                                        font-size: 14px;
+                                                        font-weight: 700;
+                                                        color: text-muted;
+                                                        horizontal-alignment: center;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        if (root.enable-emoji && root.emoji-has-conflict): fix-emoji := TouchArea {
-                                            width: 90px;
-                                            height: 22px;
-                                            clicked => { root.fix-single-shortcut("emoji"); }
+                                        // Editable shortcut square box
+                                        btn-edit-emoji := TouchArea {
+                                            clicked => { root.open-shortcut-modal("emoji"); }
                                             Rectangle {
-                                                background: fix-emoji.has-hover ? #dc2626 : danger-color;
-                                                border-radius: 4px;
-                                                Text {
-                                                    text: "Fix Shortcut";
-                                                    font-size: 12px;
-                                                    font-weight: 700;
-                                                    color: #ffffff;
-                                                    horizontal-alignment: center;
-                                                    vertical-alignment: center;
+                                                background: btn-edit-emoji.has-hover ? card-hover-bg : (is-dark ? #222222 : #e8e8e8);
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: (root.enable-emoji && root.emoji-has-conflict) ? danger-color : (btn-edit-emoji.has-hover ? accent : border-color);
+                                                height: 28px;
+
+                                                HorizontalLayout {
+                                                    padding-left: 10px;
+                                                    padding-right: 10px;
+                                                    spacing: 8px;
+
+                                                    Text {
+                                                        text: root.emoji-shortcut;
+                                                        font-size: 13px;
+                                                        font-weight: 700;
+                                                        color: accent;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Text {
+                                                        text: "✎";
+                                                        font-size: 13px;
+                                                        color: text-muted;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
 
+                                // Conflict warning — only if conflict
                                 if (root.enable-emoji && root.emoji-has-conflict): Text {
-                                    text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 13px;
+                                    text: "⚠ Shortcut conflict detected with system keybindings";
+                                    font-size: 12px;
                                     color: danger-color;
                                 }
                             }
@@ -963,59 +1078,92 @@ export component MainWindow inherits Window {
                                     }
                                 }
 
+                                // Shortcut badge row
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    Text {
-                                        text: "Global Shortcut";
-                                        font-size: 13px;
-                                        color: text-muted;
-                                        vertical-alignment: center;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Global Shortcut";
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "Press to capture screen text from anywhere";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
-                                        Rectangle {
-                                            background: card-hover-bg;
-                                            border-radius: 4px;
-                                            border-width: 1px;
-                                            border-color: border-color;
-                                            height: 22px;
-                                            HorizontalLayout {
-                                                padding-left: 8px;
-                                                padding-right: 8px;
-                                                Text {
-                                                    text: "Alt + Shift + T";
-                                                    font-size: 13px;
-                                                    font-weight: 700;
-                                                    color: accent;
-                                                    vertical-alignment: center;
+                                        spacing: 8px;
+                                        alignment: end;
+
+                                        // Restore default button
+                                        if (root.is-ocr-customized): VerticalLayout {
+                                            alignment: center;
+                                            btn-reset-ocr := TouchArea {
+                                                width: 28px;
+                                                height: 28px;
+                                                clicked => { root.reset-tool-shortcut("ocr"); }
+                                                Rectangle {
+                                                    background: btn-reset-ocr.has-hover ? card-hover-bg : transparent;
+                                                    border-radius: 14px;
+                                                    border-width: 1px;
+                                                    border-color: border-color;
+                                                    Text {
+                                                        text: "↺";
+                                                        font-size: 14px;
+                                                        font-weight: 700;
+                                                        color: text-muted;
+                                                        horizontal-alignment: center;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        if (root.enable-ocr && root.ocr-has-conflict): fix-ocr := TouchArea {
-                                            width: 90px;
-                                            height: 22px;
-                                            clicked => { root.fix-single-shortcut("ocr"); }
+                                        // Editable shortcut square box
+                                        btn-edit-ocr := TouchArea {
+                                            clicked => { root.open-shortcut-modal("ocr"); }
                                             Rectangle {
-                                                background: fix-ocr.has-hover ? #dc2626 : danger-color;
-                                                border-radius: 4px;
-                                                Text {
-                                                    text: "Fix Shortcut";
-                                                    font-size: 12px;
-                                                    font-weight: 700;
-                                                    color: #ffffff;
-                                                    horizontal-alignment: center;
-                                                    vertical-alignment: center;
+                                                background: btn-edit-ocr.has-hover ? card-hover-bg : (is-dark ? #222222 : #e8e8e8);
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: (root.enable-ocr && root.ocr-has-conflict) ? danger-color : (btn-edit-ocr.has-hover ? accent : border-color);
+                                                height: 28px;
+
+                                                HorizontalLayout {
+                                                    padding-left: 10px;
+                                                    padding-right: 10px;
+                                                    spacing: 8px;
+
+                                                    Text {
+                                                        text: root.ocr-shortcut;
+                                                        font-size: 13px;
+                                                        font-weight: 700;
+                                                        color: accent;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Text {
+                                                        text: "✎";
+                                                        font-size: 13px;
+                                                        color: text-muted;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
 
+                                // Conflict warning — only if conflict
                                 if (root.enable-ocr && root.ocr-has-conflict): Text {
-                                    text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 13px;
+                                    text: "⚠ Shortcut conflict detected with system keybindings";
+                                    font-size: 12px;
                                     color: danger-color;
                                 }
                             }
@@ -1082,59 +1230,92 @@ export component MainWindow inherits Window {
                                     }
                                 }
 
+                                // Shortcut badge row
                                 HorizontalLayout {
                                     alignment: space-between;
-                                    Text {
-                                        text: "Global Shortcut";
-                                        font-size: 13px;
-                                        color: text-muted;
-                                        vertical-alignment: center;
+
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Text {
+                                            text: "Global Shortcut";
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            color: text-color;
+                                        }
+                                        Text {
+                                            text: "Press to inspect pixel colors from anywhere";
+                                            font-size: 12px;
+                                            color: text-muted;
+                                        }
                                     }
 
                                     HorizontalLayout {
-                                        spacing: 6px;
-                                        Rectangle {
-                                            background: card-hover-bg;
-                                            border-radius: 4px;
-                                            border-width: 1px;
-                                            border-color: border-color;
-                                            height: 22px;
-                                            HorizontalLayout {
-                                                padding-left: 8px;
-                                                padding-right: 8px;
-                                                Text {
-                                                    text: "Alt + Shift + C";
-                                                    font-size: 13px;
-                                                    font-weight: 700;
-                                                    color: accent;
-                                                    vertical-alignment: center;
+                                        spacing: 8px;
+                                        alignment: end;
+
+                                        // Restore default button
+                                        if (root.is-color-customized): VerticalLayout {
+                                            alignment: center;
+                                            btn-reset-color := TouchArea {
+                                                width: 28px;
+                                                height: 28px;
+                                                clicked => { root.reset-tool-shortcut("color"); }
+                                                Rectangle {
+                                                    background: btn-reset-color.has-hover ? card-hover-bg : transparent;
+                                                    border-radius: 14px;
+                                                    border-width: 1px;
+                                                    border-color: border-color;
+                                                    Text {
+                                                        text: "↺";
+                                                        font-size: 14px;
+                                                        font-weight: 700;
+                                                        color: text-muted;
+                                                        horizontal-alignment: center;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        if (root.enable-color-picker && root.color-picker-has-conflict): fix-color := TouchArea {
-                                            width: 90px;
-                                            height: 22px;
-                                            clicked => { root.fix-single-shortcut("color"); }
+                                        // Editable shortcut square box
+                                        btn-edit-color := TouchArea {
+                                            clicked => { root.open-shortcut-modal("color"); }
                                             Rectangle {
-                                                background: fix-color.has-hover ? #dc2626 : danger-color;
-                                                border-radius: 4px;
-                                                Text {
-                                                    text: "Fix Shortcut";
-                                                    font-size: 12px;
-                                                    font-weight: 700;
-                                                    color: #ffffff;
-                                                    horizontal-alignment: center;
-                                                    vertical-alignment: center;
+                                                background: btn-edit-color.has-hover ? card-hover-bg : (is-dark ? #222222 : #e8e8e8);
+                                                border-radius: 6px;
+                                                border-width: 1px;
+                                                border-color: (root.enable-color-picker && root.color-picker-has-conflict) ? danger-color : (btn-edit-color.has-hover ? accent : border-color);
+                                                height: 28px;
+
+                                                HorizontalLayout {
+                                                    padding-left: 10px;
+                                                    padding-right: 10px;
+                                                    spacing: 8px;
+
+                                                    Text {
+                                                        text: root.color-picker-shortcut;
+                                                        font-size: 13px;
+                                                        font-weight: 700;
+                                                        color: accent;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    Text {
+                                                        text: "✎";
+                                                        font-size: 13px;
+                                                        color: text-muted;
+                                                        vertical-alignment: center;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
 
+                                // Conflict warning — only if conflict
                                 if (root.enable-color-picker && root.color-picker-has-conflict): Text {
-                                    text: "Shortcut conflict detected with system keybindings";
-                                    font-size: 13px;
+                                    text: "⚠ Shortcut conflict detected with system keybindings";
+                                    font-size: 12px;
                                     color: danger-color;
                                 }
                             }
@@ -1299,6 +1480,205 @@ export component MainWindow inherits Window {
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Full Screen Dimmed Modal Backdrop ─────────────────
+    if (root.is-shortcut-modal-open): modal-backdrop := Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #000000a0;
+
+        // Catch clicks to dismiss if clicking outside the card
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            clicked => { root.close-shortcut-modal(); }
+        }
+
+        // ── Centered Modal Square ──────────────────────────
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 420px;
+            height: 250px;
+            background: is-dark ? #181818 : #ffffff;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: is-dark ? #333333 : #e0e0e0;
+            clip: true;
+
+            // Block clicks from hitting backdrop
+            TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
+            VerticalLayout {
+                padding: 16px;
+                alignment: space-between;
+
+                // Header Row: Tick at Top-Left, Tool Name in Middle, Close at Top-Right
+                HorizontalLayout {
+                    alignment: space-between;
+                    height: 32px;
+
+                    // Tick Button (Top-Left) — Dark / Black style without green
+                    btn-modal-tick := TouchArea {
+                        width: 32px;
+                        height: 32px;
+                        enabled: root.active-modal-can-apply;
+                        clicked => {
+                            root.apply-modal-shortcut(root.active-modal-tool, root.active-modal-current-key);
+                        }
+                        Rectangle {
+                            background: root.active-modal-can-apply ? (btn-modal-tick.has-hover ? (is-dark ? #383838 : #374151) : (is-dark ? #282828 : #1f2937)) : (is-dark ? #181818 : #f3f4f6);
+                            border-radius: 6px;
+                            border-width: 1px;
+                            border-color: root.active-modal-can-apply ? (is-dark ? #4f4f4f : #111827) : (is-dark ? #282828 : #e5e7eb);
+                            Text {
+                                text: "✓";
+                                font-size: 15px;
+                                font-weight: 700;
+                                color: root.active-modal-can-apply ? #ffffff : (is-dark ? #4a4a4a : #9ca3af);
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Modal Header Title
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: root.active-modal-tool-title != "" ? root.active-modal-tool-title : "Set Shortcut";
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: text-color;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    // Close Button (Top-Right)
+                    btn-modal-close := TouchArea {
+                        width: 32px;
+                        height: 32px;
+                        clicked => { root.close-shortcut-modal(); }
+                        Rectangle {
+                            background: btn-modal-close.has-hover ? card-hover-bg : transparent;
+                            border-radius: 6px;
+                            Text {
+                                text: "✕";
+                                font-size: 13px;
+                                font-weight: 600;
+                                color: text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Middle: Live Shortcut Key Display Box (Automatically reads keypresses)
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 8px;
+
+                    Rectangle {
+                        height: 52px;
+                        background: card-hover-bg;
+                        border-radius: 8px;
+                        border-width: 1.5px;
+                        border-color: root.active-modal-is-available ? (root.active-modal-can-apply ? accent : border-color) : danger-color;
+
+                        HorizontalLayout {
+                            alignment: center;
+                            padding-left: 14px;
+                            padding-right: 14px;
+
+                            Text {
+                                text: root.active-modal-current-key != "" ? root.active-modal-current-key : "Press shortcut keys...";
+                                font-size: 17px;
+                                font-weight: 700;
+                                color: root.active-modal-current-key != "" ? text-color : text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Press shortcut keys on your keyboard";
+                        font-size: 11px;
+                        color: text-muted;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                // Bottom Status Line & "Use here" Button (Never overflows)
+                HorizontalLayout {
+                    alignment: space-between;
+                    height: 30px;
+                    spacing: 10px;
+
+                    // Left: Status text with indicator dot
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: root.active-modal-is-available ? (is-dark ? #22c55e : #16a34a) : #737373;
+                            }
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: root.active-modal-status-text;
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: root.active-modal-is-available ? (is-dark ? #22c55e : #16a34a) : (is-dark ? #a3a3a3 : #737373);
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    // Right: "Use here" override button
+                    if (!root.active-modal-is-available && root.active-modal-show-override): btn-modal-override := TouchArea {
+                        height: 28px;
+                        clicked => {
+                            root.active-modal-can-apply = true;
+                            root.active-modal-is-available = true;
+                            root.active-modal-status-text = "Overriding shortcut";
+                        }
+                        Rectangle {
+                            background: btn-modal-override.has-hover ? card-hover-bg : (is-dark ? #2a2a2a : #e5e5e5);
+                            border-radius: 5px;
+                            border-width: 1px;
+                            border-color: border-color;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                Text {
+                                    text: "Use here";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: text-color;
+                                    vertical-alignment: center;
                                 }
                             }
                         }

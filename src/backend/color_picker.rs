@@ -8,7 +8,9 @@ use crate::config::UserSettingsManager;
 
 pub static IS_COLOR_PICKER_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-static COLOR_EDITOR_WINDOW: Lazy<Mutex<Option<slint::Weak<crate::ColorEditorWindow>>>> = Lazy::new(|| Mutex::new(None));
+thread_local! {
+    static ACTIVE_COLOR_EDITOR: std::cell::RefCell<Option<(crate::ColorEditorWindow, slint::Timer)>> = std::cell::RefCell::new(None);
+}
 static COLOR_APP_WINDOW: Lazy<Mutex<Option<slint::Weak<crate::AppWindow>>>> = Lazy::new(|| Mutex::new(None));
 static COLOR_DB: Lazy<Mutex<Option<Arc<parking_lot::Mutex<rusqlite::Connection>>>>> = Lazy::new(|| Mutex::new(None));
 static COLOR_SETTINGS: Lazy<Mutex<Option<Arc<UserSettingsManager>>>> = Lazy::new(|| Mutex::new(None));
@@ -168,42 +170,13 @@ pub fn sample_pixel_at(x: i32, y: i32) -> (u8, u8, u8) {
 // --- Slint Registration & Integration ---
 
 pub fn register_color_picker(
-    editor: &crate::ColorEditorWindow,
     app_weak: slint::Weak<crate::AppWindow>,
     db: Arc<parking_lot::Mutex<rusqlite::Connection>>,
     settings_mgr: Arc<UserSettingsManager>,
 ) {
-    let editor_weak = editor.as_weak();
-    *COLOR_EDITOR_WINDOW.lock() = Some(editor_weak.clone());
-    *COLOR_APP_WINDOW.lock() = Some(app_weak.clone());
-    *COLOR_DB.lock() = Some(db.clone());
-    *COLOR_SETTINGS.lock() = Some(settings_mgr.clone());
-
-    // 1. Color Editor copy action
-    let db_copy = db.clone();
-    editor.on_copy_color_format(move |text| {
-        let _ = crate::backend::clipboard::push_extracted_text(&text, &db_copy);
-        eprintln!("[Color Editor] Copied: {}", text);
-    });
-
-    // 2. Color Editor close
-    let editor_weak_close = editor_weak.clone();
-    editor.on_close_requested(move || {
-        if let Some(ed) = editor_weak_close.upgrade() {
-            let _ = ed.window().hide();
-        }
-    });
-
-    // 3. Color Editor select history swatch
-    let editor_weak_swatch = editor_weak.clone();
-    let db_swatch = db.clone();
-    editor.on_select_history_color(move |hex_str| {
-        if let Some(ed) = editor_weak_swatch.upgrade() {
-            if let Ok((r, g, b)) = parse_hex_color(&hex_str) {
-                update_color_editor_data(&ed, r, g, b, &db_swatch.lock());
-            }
-        }
-    });
+    *COLOR_APP_WINDOW.lock() = Some(app_weak);
+    *COLOR_DB.lock() = Some(db);
+    *COLOR_SETTINGS.lock() = Some(settings_mgr);
 }
 
 fn parse_hex_color(hex: &str) -> Result<(u8, u8, u8), String> {
@@ -324,14 +297,50 @@ pub fn run_color_picker_trigger() {
                 if show_editor {
                     let db_clone = db_opt.clone();
                     let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(ed_weak) = COLOR_EDITOR_WINDOW.lock().clone() {
-                            if let Some(ed) = ed_weak.upgrade() {
-                                if let Some(ref db) = db_clone {
-                                    update_color_editor_data(&ed, r, g, b, &db.lock());
+                        if let Ok(editor) = crate::ColorEditorWindow::new() {
+                            crate::ui::window::configure_utility_window(&editor, "MagicToys Color Inspector");
+                            let editor_weak = editor.as_weak();
+
+                            // Copy format callback
+                            let db_copy = db_clone.clone();
+                            editor.on_copy_color_format(move |text| {
+                                if let Some(ref db) = db_copy {
+                                    let _ = crate::backend::clipboard::push_extracted_text(&text, db);
                                 }
-                                let _ = ed.window().show();
-                                crate::ui::window::position_center_window(&ed);
+                                eprintln!("[Color Editor] Copied: {}", text);
+                            });
+
+                            // Close callback
+                            let editor_weak_close = editor_weak.clone();
+                            editor.on_close_requested(move || {
+                                if let Some(ed) = editor_weak_close.upgrade() {
+                                    let _ = ed.window().hide();
+                                }
+                                ACTIVE_COLOR_EDITOR.with(|s| { s.borrow_mut().take(); });
+                            });
+
+                            // History swatch selection
+                            let editor_weak_swatch = editor_weak.clone();
+                            let db_swatch = db_clone.clone();
+                            editor.on_select_history_color(move |hex_str| {
+                                if let Some(ed) = editor_weak_swatch.upgrade() {
+                                    if let Ok((r, g, b)) = parse_hex_color(&hex_str) {
+                                        if let Some(ref db) = db_swatch {
+                                            update_color_editor_data(&ed, r, g, b, &db.lock());
+                                        }
+                                    }
+                                }
+                            });
+
+                            if let Some(ref db) = db_clone {
+                                update_color_editor_data(&editor, r, g, b, &db.lock());
                             }
+
+                            let focus_timer = crate::ui::window::setup_color_editor_focus_listener(&editor);
+                            crate::ui::window::position_center_window(&editor);
+                            let _ = editor.window().show();
+
+                            ACTIVE_COLOR_EDITOR.with(|s| { *s.borrow_mut() = Some((editor, focus_timer)); });
                         }
                     });
                 }
